@@ -1,0 +1,183 @@
+<html lang="vi">
+<head>
+    <meta charset="utf-8"/>
+    <title>HỢP ĐỒNG THUÊ NHÀ</title>
+    <style>
+        body { font-family: "Times New Roman", serif; line-height: 1.4; font-size: 14px; }
+        h1,h2 { text-align: center; margin: 6px 0; }
+        .center { text-align: center; }
+        .right { text-align: right; }
+        .section-title { font-weight: bold; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        td, th { border: 1px solid #000; padding: 6px; vertical-align: top; }
+        .no-border td { border: none; padding: 2px 0; }
+        .small { font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<h1>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</h1>
+<div class="center"><b>Độc lập – Tự do – Hạnh phúc</b></div>
+<div class="right">…, ngày … tháng … năm …</div>
+
+<h2>HỢP ĐỒNG THUÊ NHÀ</h2>
+<div class="center small">
+    (Mẫu tham khảo – các bên nên rà soát theo quy định pháp luật hiện hành và nhu cầu thực tế)
+</div>
+
+<div class="section-title">CĂN CỨ</div>
+<ul>
+    <li>Bộ luật Dân sự 2015 (hiệu lực từ 01/01/2017).</li>
+    <li>Luật Nhà ở 2023 (hiệu lực từ 01/08/2024).</li>
+    <li>Các văn bản pháp luật liên quan khác và thỏa thuận của các bên.</li>
+</ul>
+
+<div class="section-title">BÊN CHO THUÊ (BÊN A)</div>
+<table class="no-border">
+    <tbody>
+    <tr><td>Họ và tên/Tổ chức:</td><td><b>{{LANDLORD_NAME}}</b></td></tr>
+    <tr><td>CCCD/CMND/MST:</td><td>{{LANDLORD_ID}}</td></tr>
+    <tr><td>Ngày cấp/Nơi cấp:</td><td>{{LANDLORD_ID_ISSUE}}</td></tr>
+    <tr><td>Địa chỉ thường trú/trụ sở:</td><td>{{LANDLORD_ADDRESS}}</td></tr>
+    <tr><td>Điện thoại/Email:</td><td>{{LANDLORD_PHONE}} / {{LANDLORD_EMAIL}}</td></tr>
+    <tr><td>Tài khoản nhận tiền:</td><td>{{LANDLORD_BANK}}</td></tr>
+    </tbody>
+</table>
+
+<div class="section-title">BÊN THUÊ (BÊN B)</div>
+<table class="no-border">
+    <tbody>
+    <tr><td>Họ và tên/Tổ chức:</td><td><b>{{TENANT_NAME}}</b></td></tr>
+    <tr><td>CCCD/CMND/MST:</td><td>{{TENANT_ID}}</td></tr>
+    <tr><td>Ngày cấp/Nơi cấp:</td><td>{{TENANT_ID_ISSUE}}</td></tr>
+    <tr><td>Địa chỉ thường trú/trụ sở:</td><td>{{TENANT_ADDRESS}}</td></tr>
+    <tr><td>Điện thoại/Email:</td><td>{{TENANT_PHONE}} / {{TENANT_EMAIL}}</td></tr>
+    </tbody>
+</table>
+
+<div class="section-title">ĐIỀU 1. ĐỐI TƯỢNG THUÊ</div>
+<p>
+    Bên A đồng ý cho Bên B thuê nhà/căn hộ tại địa chỉ: <b>{{PROPERTY_ADDRESS}}</b>.
+</p>
+<p>
+    Mô tả: diện tích sử dụng {{AREA}} m²; kết cấu {{STRUCTURE}}; mục đích sử dụng: <b>{{PURPOSE}}</b>.
+</p>
+<p>
+    Hồ sơ/chứng minh quyền sở hữu/sử dụng (nếu áp dụng): {{OWNERSHIP_DOCS}}.
+</p>
+
+<div class="section-title">ĐIỀU 2. THỜI HẠN THUÊ</div>
+<p>
+    Thời hạn thuê: từ ngày <b>{{START_DATE}}</b> đến hết ngày <b>{{END_DATE}}</b>.
+    Gia hạn: các bên thỏa thuận bằng văn bản trước {{RENEW_NOTICE_DAYS}} ngày.
+</p>
+
+<div class="section-title">ĐIỀU 3. GIÁ THUÊ, PHƯƠNG THỨC VÀ THỜI HẠN THANH TOÁN</div>
+<p>
+    Giá thuê: <b>{{RENT_AMOUNT}}</b> VNĐ/tháng (bằng chữ: {{RENT_TEXT}}), đã/không bao gồm thuế, phí: {{TAX_FEE_NOTE}}.
+</p>
+<p>
+    Kỳ thanh toán: {{PAY_CYCLE}}. Ngày thanh toán: {{PAY_DAY}} hàng kỳ.
+    Phương thức: chuyển khoản/tiền mặt (ưu tiên chuyển khoản).
+</p>
+<p>
+    Chậm thanh toán: nếu chậm quá {{LATE_DAYS}} ngày, Bên B chịu phạt {{LATE_PENALTY}}%/tháng trên số tiền chậm.
+</p>
+
+<div class="section-title">ĐIỀU 4. TIỀN ĐẶT CỌC</div>
+<p>
+    Bên B đặt cọc <b>{{DEPOSIT_AMOUNT}}</b> VNĐ vào ngày {{DEPOSIT_DATE}} để bảo đảm thực hiện hợp đồng.
+</p>
+<p>
+    Hoàn trả cọc: trong vòng {{DEPOSIT_REFUND_DAYS}} ngày kể từ ngày thanh lý/bàn giao, sau khi đối trừ công nợ, hư hỏng (nếu có).
+</p>
+
+<div class="section-title">ĐIỀU 5. BÀN GIAO, HIỆN TRẠNG VÀ TÀI SẢN ĐI KÈM</div>
+<p>
+    Bàn giao vào ngày {{HANDOVER_DATE}}. Hai bên lập “Biên bản bàn giao” kèm danh mục tài sản, công tơ điện/nước, chìa khóa.
+</p>
+
+{{ASSETS_TABLE}}
+
+<div class="section-title">ĐIỀU 6. ĐIỆN, NƯỚC, INTERNET, PHÍ DỊCH VỤ</div>
+<p>
+    Bên B thanh toán các chi phí sử dụng: điện, nước, internet, vệ sinh, phí quản lý (nếu có) theo hóa đơn/thực tế/đơn giá thỏa thuận:
+    {{UTILITY_RULES}}.
+</p>
+
+<div class="section-title">ĐIỀU 7. QUYỀN VÀ NGHĨA VỤ CỦA BÊN A</div>
+<ul>
+    <li>Bàn giao nhà đúng thời hạn, đúng hiện trạng; đảm bảo quyền cho thuê hợp pháp.</li>
+    <li>Bảo trì/sửa chữa phần kết cấu, hạ tầng thuộc trách nhiệm chủ nhà (trừ khi do lỗi Bên B).</li>
+    <li>Thông báo trước {{LANDLORD_NOTICE_DAYS}} ngày khi kiểm tra, bảo trì (trừ trường hợp khẩn cấp).</li>
+    <li>Nhận tiền thuê đúng hạn; cung cấp hóa đơn/chứng từ (nếu thỏa thuận).</li>
+</ul>
+
+<div class="section-title">ĐIỀU 8. QUYỀN VÀ NGHĨA VỤ CỦA BÊN B</div>
+<ul>
+    <li>Sử dụng đúng mục đích; không tự ý thay đổi kết cấu, cải tạo lớn nếu chưa được Bên A đồng ý bằng văn bản.</li>
+    <li>Giữ gìn tài sản; bồi thường thiệt hại do lỗi của mình gây ra.</li>
+    <li>Không cho thuê lại/cho mượn/chuyển nhượng quyền thuê nếu không có chấp thuận bằng văn bản của Bên A, trừ trường hợp pháp luật cho phép.</li>
+    <li>Thanh toán đúng hạn; tuân thủ quy định PCCC, an ninh trật tự, đăng ký tạm trú (nếu có).</li>
+</ul>
+
+<div class="section-title">ĐIỀU 9. SỬA CHỮA, CẢI TẠO, TRANG TRÍ</div>
+<p>
+    Các sửa chữa nhỏ phục vụ sinh hoạt do Bên B chịu. Sửa chữa lớn/kết cấu do Bên A chịu, trừ trường hợp hư hỏng do Bên B gây ra.
+    Mọi cải tạo ảnh hưởng kết cấu phải có chấp thuận bằng văn bản của Bên A và tuân thủ quy định pháp luật.
+</p>
+
+<div class="section-title">ĐIỀU 10. CHẤM DỨT HỢP ĐỒNG VÀ PHẠT VI PHẠM</div>
+<ul>
+    <li>Hết hạn thuê và không gia hạn.</li>
+    <li>Một bên vi phạm nghĩa vụ cơ bản và không khắc phục trong {{CURE_DAYS}} ngày kể từ khi nhận thông báo.</li>
+    <li>Bên B chậm thanh toán quá {{MAX_LATE_DAYS}} ngày liên tiếp.</li>
+    <li>Các trường hợp bất khả kháng theo Điều 11.</li>
+</ul>
+<p>
+    Khi chấm dứt trước hạn do lỗi Bên B: Bên A có quyền khấu trừ tiền đặt cọc/thu phí phạt theo thỏa thuận: {{EARLY_TERMINATION_PENALTY}}.
+    Khi do lỗi Bên A: Bên A hoàn trả cọc và bồi thường (nếu có) theo thỏa thuận: {{LANDLORD_BREACH_COMPENSATION}}.
+</p>
+
+<div class="section-title">ĐIỀU 11. BẤT KHẢ KHÁNG</div>
+<p>
+    Nếu xảy ra sự kiện bất khả kháng (thiên tai, hỏa hoạn, dịch bệnh, quyết định cơ quan nhà nước…) ảnh hưởng nghiêm trọng,
+    bên bị ảnh hưởng phải thông báo cho bên kia trong {{FORCE_MAJEURE_NOTICE_HOURS}} giờ. Hai bên thương lượng giải pháp:
+    tạm dừng/giảm tiền thuê/chấm dứt hợp đồng.
+</p>
+
+<div class="section-title">ĐIỀU 12. GIẢI QUYẾT TRANH CHẤP</div>
+<p>
+    Ưu tiên thương lượng. Nếu không giải quyết được trong {{DISPUTE_DAYS}} ngày, tranh chấp được đưa ra {{DISPUTE_FORUM}}
+    theo quy định pháp luật Việt Nam.
+</p>
+
+<div class="section-title">ĐIỀU 13. ĐIỀU KHOẢN CHUNG</div>
+<ul>
+    <li>Hợp đồng có hiệu lực từ ngày ký hoặc từ {{EFFECTIVE_DATE}} (theo thỏa thuận).</li>
+    <li>Phụ lục/biên bản bàn giao là phần không tách rời của hợp đồng.</li>
+    <li>Hợp đồng lập thành {{COPIES}} bản, mỗi bên giữ {{EACH_KEEP}} bản, có giá trị như nhau.</li>
+</ul>
+
+<br/><br/>
+<table class="no-border">
+    <tbody>
+    <tr>
+        <td class="center">
+            <b>ĐẠI DIỆN BÊN A</b><br/>(Ký, ghi rõ họ tên)
+            <span style="color:white;font-size:1px;">SIGN_A</span>
+        </td>
+        <td class="center">
+            <b>ĐẠI DIỆN BÊN B</b><br/>(Ký, ghi rõ họ tên)
+            <span style="color:white;font-size:1px;">SIGN_B</span>
+        </td>
+    </tr>
+    <tr>
+        <td style="height:100px;"></td>
+        <td></td>
+    </tr>
+    </tbody>
+</table>
+
+</body>
+</html>
