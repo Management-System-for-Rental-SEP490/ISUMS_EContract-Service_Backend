@@ -30,6 +30,8 @@ public class EContract implements Serializable {
     private String snapshotKey;
     @Column(nullable = false)
     private EContractStatus status;
+    @Column(columnDefinition = "text", nullable = false)
+    private String html;
     private UUID createdBy;
     private Instant createdAt;
 }

@@ -11,6 +11,7 @@ import com.isums.contractservice.grpc.AssetItemDto;
 import com.isums.contractservice.grpc.HouseResponse;
 import com.isums.contractservice.infrastructures.grpcs.AssetGrpcClient;
 import com.isums.contractservice.infrastructures.grpcs.HouseGrpcClient;
+import com.isums.contractservice.infrastructures.repositories.EContractRepository;
 import com.isums.contractservice.infrastructures.repositories.EContractTemplateRepository;
 import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
@@ -44,6 +45,7 @@ public class EContractServiceImpl implements EContractService {
     private final HouseGrpcClient houseGrpcClient;
     private final EContractTemplateRepository templateRepository;
     private final AssetGrpcClient assetGrpcClient;
+    private final EContractRepository econtractRepository;
 
     private final DateTimeFormatter dayMonthYear = DateTimeFormatter.ofPattern("dd/MM/yyyy")
             .withZone(ZoneOffset.UTC);
@@ -71,15 +73,6 @@ public class EContractServiceImpl implements EContractService {
 
             System.out.println("House is found " + house);
 
-            String contractName = "EContract_" + req.name() + "_" + Instant.now().getEpochSecond();
-            EContract econtract = EContract.builder()
-                    .userId(userId)
-                    .name(contractName)
-                    .status(EContractStatus.DRAFT)
-                    .createdBy(actorId)
-                    .createdAt(Instant.now())
-                    .build();
-
             return CreateDocumentVnpt(actorId, req, house);
         } catch (Exception ex) {
             log.error("CreateDraftVnptEContract failed", ex);
@@ -87,7 +80,7 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
-    private VnptDocumentDto CreateDocumentVnpt(UUID actor, CreateEContractRequest req, HouseResponse house) {
+    private VnptDocumentDto CreateDocumentVnpt(UUID actorId, CreateEContractRequest req, HouseResponse house) {
 
         String templateCode = "LEASE_HOUSE";
         EContractTemplate template = templateRepository.findByCode(templateCode)
@@ -182,6 +175,19 @@ public class EContractServiceImpl implements EContractService {
             log.error("Failed to create document on VNPT: {}", errorMsg);
             throw new IllegalStateException("Failed to create document on VNPT: " + errorMsg);
         }
+
+        String contractName = "EContract_" + req.name() + "_" + Instant.now().getEpochSecond();
+
+        EContract econtract = EContract.builder()
+                .userId(actorId)
+                .name(contractName)
+                .status(EContractStatus.DRAFT)
+                .createdBy(actorId)
+                .html(html)
+                .createdAt(Instant.now())
+                .build();
+
+        econtractRepository.save(econtract);
 
         result.getData().withSignMeta(positionA.pos(), positionB.pos());
         return result.getData();
@@ -501,7 +507,7 @@ public class EContractServiceImpl implements EContractService {
 
         private AnchorBoxVnpt calcAnchorBoxPdfCoords(List<TextPosition> sub) {
             float xMin = Float.MAX_VALUE;
-            float yMaxUL = 0f; // UL-bottom (yUL + h) lớn nhất
+            float yMaxUL = 0f;
 
             for (TextPosition tp : sub) {
                 float x = tp.getXDirAdj();
