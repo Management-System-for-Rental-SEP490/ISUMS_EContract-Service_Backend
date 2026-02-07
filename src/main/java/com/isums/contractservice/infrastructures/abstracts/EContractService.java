@@ -12,4 +12,6 @@ public interface EContractService {
     public EContractDto getEContractById(UUID id);
 
     public List<EContractDto> getAllEContracts();
+
+    public EContractDto updateEContractById(UUID id, UpdateEContractRequest req);
 }

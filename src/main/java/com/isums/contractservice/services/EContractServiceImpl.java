@@ -111,6 +111,24 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
+    @Override
+    @CacheEvict(allEntries = true, value = "allEContracts")
+    public EContractDto updateEContractById(UUID id, UpdateEContractRequest req) {
+        try {
+            EContract econtract = eContractRepository.findById(id)
+                    .orElseThrow(() -> new IllegalStateException("Contract with id " + id + " not found"));
+
+            eContractMapper.patch(req, econtract);
+            eContractRepository.save(econtract);
+
+            return eContractMapper.contractToDto(econtract);
+
+        } catch (Exception ex) {
+            log.error("updateEContractById failed", ex);
+            throw new IllegalStateException("updateEContractById failed");
+        }
+    }
+
     private EContractDto CreateDocument(UUID actorId, UUID tenantId, CreateEContractRequest req, HouseResponse house) {
 
         String templateCode = "LEASE_HOUSE";
@@ -537,7 +555,7 @@ public class EContractServiceImpl implements EContractService {
 
         private AnchorBoxVnpt calcAnchorBoxPdfCoords(List<TextPosition> sub) {
             float xMin = Float.MAX_VALUE;
-            float yMaxUL = 0f; // UL-bottom (yUL + h) lớn nhất
+            float yMaxUL = 0f;
 
             for (TextPosition tp : sub) {
                 float x = tp.getXDirAdj();
