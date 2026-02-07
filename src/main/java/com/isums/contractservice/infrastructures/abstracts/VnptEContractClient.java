@@ -1,4 +1,4 @@
-package com.isums.contractservice.abstracts;
+package com.isums.contractservice.infrastructures.abstracts;
 
 
 import com.isums.contractservice.domains.dtos.CreateDocumentDto;

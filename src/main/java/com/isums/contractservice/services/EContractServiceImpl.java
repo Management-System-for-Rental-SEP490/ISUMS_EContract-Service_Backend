@@ -1,7 +1,7 @@
 package com.isums.contractservice.services;
 
-import com.isums.contractservice.abstracts.EContractService;
-import com.isums.contractservice.abstracts.VnptEContractClient;
+import com.isums.contractservice.infrastructures.abstracts.EContractService;
+import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.domains.entities.EContract;
 import com.isums.contractservice.domains.entities.EContractTemplate;
@@ -11,6 +11,8 @@ import com.isums.contractservice.grpc.AssetItemDto;
 import com.isums.contractservice.grpc.HouseResponse;
 import com.isums.contractservice.infrastructures.grpcs.AssetGrpcClient;
 import com.isums.contractservice.infrastructures.grpcs.HouseGrpcClient;
+import com.isums.contractservice.infrastructures.mappers.EContractMapper;
+import com.isums.contractservice.infrastructures.repositories.EContractRepository;
 import com.isums.contractservice.infrastructures.repositories.EContractTemplateRepository;
 import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
@@ -22,6 +24,8 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
@@ -44,12 +48,15 @@ public class EContractServiceImpl implements EContractService {
     private final HouseGrpcClient houseGrpcClient;
     private final EContractTemplateRepository templateRepository;
     private final AssetGrpcClient assetGrpcClient;
+    private final EContractRepository eContractRepository;
+    private final EContractMapper eContractMapper;
 
     private final DateTimeFormatter dayMonthYear = DateTimeFormatter.ofPattern("dd/MM/yyyy")
             .withZone(ZoneOffset.UTC);
 
     @Override
-    public VnptDocumentDto CreateDraftVnptEContract(UUID actorId, CreateEContractRequest req) {
+    @CacheEvict(allEntries = true, value = "allEContracts")
+    public EContractDto CreateDraftEContract(UUID actorId, CreateEContractRequest req) {
         try {
             UUID userId = UUID.randomUUID();
             CreateUserPlacedEvent userEvent = CreateUserPlacedEvent.builder()
@@ -71,23 +78,40 @@ public class EContractServiceImpl implements EContractService {
 
             System.out.println("House is found " + house);
 
-            String contractName = "EContract_" + req.name() + "_" + Instant.now().getEpochSecond();
-            EContract econtract = EContract.builder()
-                    .userId(userId)
-                    .name(contractName)
-                    .status(EContractStatus.DRAFT)
-                    .createdBy(actorId)
-                    .createdAt(Instant.now())
-                    .build();
-
-            return CreateDocumentVnpt(actorId, req, house);
+            return CreateDocument(actorId, userId, req, house);
         } catch (Exception ex) {
             log.error("CreateDraftVnptEContract failed", ex);
             throw new IllegalStateException("CreateDraftVnptEContract failed");
         }
     }
 
-    private VnptDocumentDto CreateDocumentVnpt(UUID actor, CreateEContractRequest req, HouseResponse house) {
+    @Override
+    public EContractDto getEContractById(UUID id) {
+        try {
+            EContract econtract = eContractRepository.findById(id)
+                    .orElseThrow(() -> new IllegalStateException("Contract with id " + id + " not found"));
+
+            return eContractMapper.contractToDto(econtract);
+        } catch (Exception ex) {
+            log.error("getEContractById failed", ex);
+            throw new IllegalStateException("getEContractById failed");
+        }
+    }
+
+    @Override
+    @Cacheable(value = "allEContracts")
+    public List<EContractDto> getAllEContracts() {
+        try {
+            List<EContract> econtracts = eContractRepository.findAll();
+
+            return eContractMapper.contractsToDtoList(econtracts);
+        } catch (Exception ex) {
+            log.error("getAllEContracts failed", ex);
+            throw new IllegalStateException("getAllEContracts failed");
+        }
+    }
+
+    private EContractDto CreateDocument(UUID actorId, UUID tenantId, CreateEContractRequest req, HouseResponse house) {
 
         String templateCode = "LEASE_HOUSE";
         EContractTemplate template = templateRepository.findByCode(templateCode)
@@ -161,32 +185,44 @@ public class EContractServiceImpl implements EContractService {
 
         String html = placeholderEngine(template.getContentHtml(), data);
 
-        byte[] pdfBytes = renderHtmlToPdf(html);
-
-        Map<String, AnchorBoxVnpt> anchors = findAnchors(pdfBytes, List.of("SIGN_A", "SIGN_B"));
-        VnptPosition positionA = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 0, 20, 60);
-        VnptPosition positionB = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 0, 20, 60);
+//        byte[] pdfBytes = renderHtmlToPdf(html);
+//
+//        Map<String, AnchorBoxVnpt> anchors = findAnchors(pdfBytes, List.of("SIGN_A", "SIGN_B"));
+//        VnptPosition positionA = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 0, 20, 60);
+//        VnptPosition positionB = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 0, 20, 60);
 
         String No = "EC_" + Instant.now().getEpochSecond() + "_" + req.identityNumber();
         if (No.length() > 40) {
             No = No.substring(0, 40);
         }
-        FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No + ".pdf");
-        CreateDocumentDto createDocumentDto = new CreateDocumentDto(fileInfoDto, "Rental EContract", "Rental EContract", 3059, 3110, No);
+//        FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No + ".pdf");
+//        CreateDocumentDto createDocumentDto = new CreateDocumentDto(fileInfoDto, "Rental EContract", "Rental EContract", 3059, 3110, No);
 
-        String token = econtractClient.getToken();
-        VnptResult<VnptDocumentDto> result = econtractClient.createDocument(token, createDocumentDto);
+//        String token = econtractClient.getToken();
+//        VnptResult<VnptDocumentDto> result = econtractClient.createDocument(token, createDocumentDto);
 
-        if (result == null || result.getData() == null) {
-            String errorMsg = (result != null) ? result.getMessage() : "Unknown error";
-            log.error("Failed to create document on VNPT: {}", errorMsg);
-            throw new IllegalStateException("Failed to create document on VNPT: " + errorMsg);
-        }
+//        if (result == null || result.getData() == null) {
+//            String errorMsg = (result != null) ? result.getMessage() : "Unknown error";
+//            log.error("Failed to create document on VNPT: {}", errorMsg);
+//            throw new IllegalStateException("Failed to create document on VNPT: " + errorMsg);
+//        }
 
-        result.getData().withSignMeta(positionA.pos(), positionB.pos());
-        return result.getData();
+        String contractName = "EContract_" + req.name() + "_" + Instant.now().getEpochSecond();
+        EContract econtract = EContract.builder()
+                .userId(tenantId)
+                .name(contractName)
+                .html(html)
+                .status(EContractStatus.DRAFT)
+                .createdBy(actorId)
+                .createdAt(Instant.now())
+                .build();
+
+        eContractRepository.save(econtract);
+
+//        result.getData().withSignMeta(positionA.pos(), positionB.pos());
+//        return result.getData();
+        return eContractMapper.contractToDto(econtract);
     }
-
 
 
     private String placeholderEngine(String template, Map<String, Object> data) {
