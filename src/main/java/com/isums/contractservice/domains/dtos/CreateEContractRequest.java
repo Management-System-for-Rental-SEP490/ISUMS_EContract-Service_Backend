@@ -7,7 +7,6 @@ import java.util.UUID;
 
 public record CreateEContractRequest(
         String name,
-        UUID house,
         String email,
         @Nullable String phoneNumber,
         @Nullable String identityNumber,

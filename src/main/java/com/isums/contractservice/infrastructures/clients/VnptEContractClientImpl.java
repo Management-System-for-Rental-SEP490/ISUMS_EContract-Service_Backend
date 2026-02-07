@@ -1,6 +1,6 @@
 package com.isums.contractservice.infrastructures.clients;
 
-import com.isums.contractservice.abstracts.VnptEContractClient;
+import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import com.isums.contractservice.configurations.VnptEcontractProperties;
 import com.isums.contractservice.domains.dtos.CreateDocumentDto;
 import com.isums.contractservice.domains.dtos.LoginVnptDto;
@@ -8,7 +8,6 @@ import com.isums.contractservice.domains.dtos.VnptDocumentDto;
 import com.isums.contractservice.domains.dtos.VnptResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;

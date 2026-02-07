@@ -1,15 +1,13 @@
 package com.isums.contractservice.controllers;
 
-import com.isums.contractservice.abstracts.EContractService;
+import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.domains.dtos.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -19,10 +17,22 @@ public class EContractController {
     private final EContractService contractService;
 
     @PostMapping
-    public ApiResponse<VnptDocumentDto> createDocument(@AuthenticationPrincipal Jwt jwt, @RequestBody CreateEContractRequest req) {
+    public ApiResponse<EContractDto> createDocument(@AuthenticationPrincipal Jwt jwt, @RequestBody CreateEContractRequest req) {
         UUID actorId = extractActorId(jwt);
-        VnptDocumentDto res = contractService.CreateDraftVnptEContract(actorId, req);
+        EContractDto res = contractService.CreateDraftEContract(actorId, req);
         return ApiResponses.created(res, "Success to create e-contract");
+    }
+
+    @GetMapping("{id}")
+    public ApiResponse<EContractDto> getEContractById(@PathVariable UUID id) {
+        EContractDto res = contractService.getEContractById(id);
+        return ApiResponses.ok(res, "Success to get e-contract");
+    }
+
+    @GetMapping
+    public ApiResponse<List<EContractDto>> getAllEContracts(@AuthenticationPrincipal Jwt jwt) {
+        List<EContractDto> res = contractService.getAllEContracts();
+        return ApiResponses.ok(res, "Success to get e-contracts");
     }
 
     private UUID extractActorId(Jwt jwt) {
