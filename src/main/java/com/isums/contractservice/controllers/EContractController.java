@@ -2,6 +2,7 @@ package com.isums.contractservice.controllers;
 
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.domains.dtos.*;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -33,6 +34,12 @@ public class EContractController {
     public ApiResponse<List<EContractDto>> getAllEContracts(@AuthenticationPrincipal Jwt jwt) {
         List<EContractDto> res = contractService.getAllEContracts();
         return ApiResponses.ok(res, "Success to get e-contracts");
+    }
+
+    @PutMapping("/{id}")
+    public ApiResponse<EContractDto> updateEContractById(@PathVariable UUID id, @Valid @RequestBody UpdateEContractRequest req) {
+        EContractDto res = contractService.updateEContractById(id, req);
+        return ApiResponses.ok(res, "Success to update e-contract");
     }
 
     private UUID extractActorId(Jwt jwt) {
