@@ -1,5 +1,6 @@
 package com.isums.contractservice.services;
 
+import com.isums.contractservice.domains.events.ConfirmAndSendToTenantEvent;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import com.isums.contractservice.domains.dtos.*;
@@ -126,6 +127,32 @@ public class EContractServiceImpl implements EContractService {
         } catch (Exception ex) {
             log.error("updateEContractById failed", ex);
             throw new IllegalStateException("updateEContractById failed");
+        }
+    }
+
+    @Override
+    public void confirmAndSendToTenant(UUID contractId) {
+        try {
+            EContract eContract = eContractRepository.findById(contractId)
+                    .orElseThrow(() -> new IllegalStateException("Contract with id " + contractId + " not found"));
+
+            if (eContract.getStatus() != EContractStatus.DRAFT) {
+                throw new IllegalStateException("Cannot confirm contract in status: " + eContract.getStatus());
+            }
+
+            eContract.setStatus(EContractStatus.CONFIRM);
+            String url = "sso.isums.pro" + eContract.getId();
+            ConfirmAndSendToTenantEvent event = ConfirmAndSendToTenantEvent.builder()
+                    .url(url)
+                    .tenantId(eContract.getUserId())
+                    .build();
+
+            kafkaTemplate.send("confirmAndSendToTenant-topic", event);
+
+//            eContractRepository.save(eContract);
+        } catch (Exception ex) {
+            log.error("confirmAndSendToTenant failed", ex);
+            throw new IllegalStateException("confirmAndSendToTenant failed");
         }
     }
 
@@ -573,5 +600,6 @@ public class EContractServiceImpl implements EContractService {
             return new AnchorBoxVnpt(pageNo1Based, pdfLeft, pdfBottom);
         }
     }
+
 
 }
