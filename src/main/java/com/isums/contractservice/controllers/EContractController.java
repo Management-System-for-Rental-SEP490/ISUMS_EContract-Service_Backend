@@ -55,4 +55,10 @@ public class EContractController {
             throw new IllegalStateException("JWT user id is not a UUID: " + raw);
         }
     }
+
+    @PutMapping("/confirm/{id}")
+    public ApiResponse<Void> confirmEContract(@PathVariable UUID id) {
+        contractService.confirmAndSendToTenant(id);
+        return ApiResponses.ok(null, "Success to confirm e-contract and send email to tenant");
+    }
 }
