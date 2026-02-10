@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/econtracts")
+@RequestMapping("/econtracts")
 @RequiredArgsConstructor
 public class EContractController {
     private final EContractService contractService;
