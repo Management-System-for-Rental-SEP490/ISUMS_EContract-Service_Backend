@@ -68,6 +68,40 @@ public class EContractServiceImpl implements EContractService {
                     .identityNumber(req.identityNumber())
                     .build();
 
+            // tam thoi set cung
+            List<UUID> roleIds = new ArrayList<UUID>(
+                    List.of(UUID.fromString("0aa2afc9-39c5-4652-baec-08ddc28cdda2"))
+            );
+
+            // tam thoi set cung
+            List<Integer> departmentIds = new ArrayList<>(
+                    List.of(3110)
+            );
+
+            String token = econtractClient.getToken();
+            VnptUserUpsert vnptUser = new VnptUserUpsert(
+                    userId.toString(),
+                    req.email(),
+                    req.name(),
+                    req.email(),
+                    req.phoneNumber(),
+                    1,
+                    0,
+                    2,
+                    true,
+                    true,
+                    1,
+                    -1,
+                    departmentIds,
+                    roleIds
+            );
+
+            VnptResult<List<VnptUserDto>> userResult = econtractClient.CreateOrUpdateUser(token, vnptUser);
+            if (userResult == null || userResult.getData() == null) {
+                String errorMsg = (userResult != null) ? userResult.getMessage() : "Unknown error";
+                log.error("Failed to create user on VNPT: {}", errorMsg);
+                throw new IllegalStateException("Failed to create user on VNPT: " + errorMsg);
+            }
 
             kafkaTemplate.send("createUser-topic", userEvent);
             System.out.println("Kafka is sent " + userEvent);
@@ -131,7 +165,7 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
-    public void confirmAndSendToTenant(UUID contractId) {
+    public VnptResult<VnptDocumentDto> confirmAndSendToTenant(UUID contractId) {
         try {
             EContract eContract = eContractRepository.findById(contractId)
                     .orElseThrow(() -> new IllegalStateException("Contract with id " + contractId + " not found"));
@@ -149,7 +183,32 @@ public class EContractServiceImpl implements EContractService {
 
             kafkaTemplate.send("confirmAndSendToTenant-topic", event);
 
-//            eContractRepository.save(eContract);
+            byte[] pdfBytes = renderHtmlToPdf(eContract.getHtml());
+
+//            Map<String, AnchorBoxVnpt> anchors = findAnchors(pdfBytes, List.of("SIGN_A", "SIGN_B"));
+//            VnptPosition positionA = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 0, 20, 60);
+//            VnptPosition positionB = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 0, 20, 60);
+
+            String No = "EC_" + Instant.now().getEpochSecond() + "_" + eContract.getUserId();
+            if (No.length() > 40) {
+                No = No.substring(0, 40);
+            }
+
+            FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No);
+            CreateDocumentDto createDocumentDto = new CreateDocumentDto(fileInfoDto, "Rental EContract", "Rental EContract", 3059, 3110, No);
+
+            String token = econtractClient.getToken();
+            VnptResult<VnptDocumentDto> result = econtractClient.createDocument(token, createDocumentDto);
+
+            if (result == null || result.getData() == null) {
+                String errorMsg = (result != null) ? result.getMessage() : "Unknown error";
+                log.error("Failed to create document on VNPT: {}", errorMsg);
+                throw new IllegalStateException("Failed to create document on VNPT: " + errorMsg);
+            }
+
+            eContractRepository.save(eContract);
+
+            return result;
         } catch (Exception ex) {
             log.error("confirmAndSendToTenant failed", ex);
             throw new IllegalStateException("confirmAndSendToTenant failed");
@@ -236,10 +295,10 @@ public class EContractServiceImpl implements EContractService {
 //        VnptPosition positionA = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 0, 20, 60);
 //        VnptPosition positionB = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 0, 20, 60);
 
-        String No = "EC_" + Instant.now().getEpochSecond() + "_" + req.identityNumber();
-        if (No.length() > 40) {
-            No = No.substring(0, 40);
-        }
+//        String No = "EC_" + Instant.now().getEpochSecond() + "_" + req.identityNumber();
+//        if (No.length() > 40) {
+//            No = No.substring(0, 40);
+//        }
 //        FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No + ".pdf");
 //        CreateDocumentDto createDocumentDto = new CreateDocumentDto(fileInfoDto, "Rental EContract", "Rental EContract", 3059, 3110, No);
 

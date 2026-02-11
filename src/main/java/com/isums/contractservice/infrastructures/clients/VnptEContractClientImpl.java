@@ -1,11 +1,8 @@
 package com.isums.contractservice.infrastructures.clients;
 
+import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import com.isums.contractservice.configurations.VnptEcontractProperties;
-import com.isums.contractservice.domains.dtos.CreateDocumentDto;
-import com.isums.contractservice.domains.dtos.LoginVnptDto;
-import com.isums.contractservice.domains.dtos.VnptDocumentDto;
-import com.isums.contractservice.domains.dtos.VnptResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.io.ByteArrayResource;
@@ -26,6 +23,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.function.Supplier;
 
 
@@ -163,6 +161,46 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             throw new IllegalStateException("VNPT login failed: " + ex.getStatusCode().value()
                     + " " + ex.getStatusText() + (body.isBlank() ? "" : "\n" + body), ex);
         }
+    }
+
+    @Override
+    public VnptResult<List<VnptUserDto>> CreateOrUpdateUser(String token, VnptUserUpsert users) {
+
+        final String uri = "/api/users/create-or-update";
+
+        return safeCall(HttpMethod.POST, uri, () -> {
+            if (token == null || token.isBlank()) {
+                return VnptResult.error("Missing token");
+            }
+
+            if (users == null) {
+                return VnptResult.error("Missing users");
+            }
+
+            String raw = vnptRestClient.post()
+                    .uri(uri)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .headers(h -> bearer(h, token))
+                    .body(users)
+                    .retrieve()
+                    .body(String.class);
+
+            if (raw == null || raw.isBlank()) {
+                return VnptResult.error("VNPT returned empty body");
+            }
+            int max = 4000;
+            String clipped = raw.length() > max ? raw.substring(0, max) + "..." : raw;
+
+            try {
+                return mapper.readValue(raw, new TypeReference<VnptResult<List<VnptUserDto>>>() {
+                });
+            } catch (Exception e) {
+                return VnptResult.error("Cannot parse VNPT response: "
+                        + e.getClass().getSimpleName() + ": " + e.getMessage()
+                        + "\nRAW=" + clipped);
+            }
+        });
     }
 
     private String parseToken(String body) {
