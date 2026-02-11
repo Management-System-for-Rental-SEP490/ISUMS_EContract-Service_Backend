@@ -2,6 +2,7 @@ package com.isums.contractservice.controllers;
 
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.domains.dtos.*;
+import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -12,10 +13,11 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/econtracts")
+@RequestMapping
 @RequiredArgsConstructor
 public class EContractController {
     private final EContractService contractService;
+    private final VnptEContractClient client;
 
     @PostMapping
     public ApiResponse<EContractDto> createDocument(@AuthenticationPrincipal Jwt jwt, @RequestBody CreateEContractRequest req) {
@@ -60,5 +62,11 @@ public class EContractController {
     public ApiResponse<Void> confirmEContract(@PathVariable UUID id) {
         contractService.confirmAndSendToTenant(id);
         return ApiResponses.ok(null, "Success to confirm e-contract and send email to tenant");
+    }
+
+    // Test VNPT EContract API
+    @GetMapping("/token")
+    public String getToken() {
+        return client.getToken();
     }
 }
