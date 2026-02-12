@@ -18,4 +18,6 @@ public interface EContractService {
     public void confirmAndSendToTenant(UUID contractId);
 
     public ProcessLoginInfoDto getAccessInfoByProcessCode(ProcessCodeLoginRequest req);
+
+    public VnptDocumentDto readyEContract(ReadyEContractRequest req);
 }
