@@ -35,7 +35,7 @@ public class MagicLinkTokenService {
     }
 
     public Optional<MagicPayload> verify(String token) {
-        String value = redis.opsForValue().getAndDelete(key(token));
+        String value = redis.opsForValue().get(key(token));
         if (value == null || value.isBlank()) return Optional.empty();
 
         String[] parts = value.split("\\|");

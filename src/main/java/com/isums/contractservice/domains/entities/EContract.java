@@ -24,6 +24,9 @@ public class EContract implements Serializable {
     @GeneratedValue
     @UuidGenerator
     private UUID id;
+    // document form vnpt
+    @Column(unique = true)
+    private String documentId;
     @Column(nullable = false)
     private UUID userId;
     @Column(nullable = false, columnDefinition = "text")
