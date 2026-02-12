@@ -35,6 +35,9 @@ public class VnptEContractClientImpl implements VnptEContractClient {
     private final VnptEcontractProperties props;
     private final ObjectMapper mapper;
 
+    public record ProcessCodeLoginRequest(String processCode) {
+    }
+
     private static void bearer(HttpHeaders headers, String token) {
         headers.setBearerAuth(token);
     }
@@ -202,6 +205,115 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             }
         });
     }
+
+    @Override
+    public VnptResult<ProcessLoginInfoDto> getAccessInfoByProcessCode(String processCode) {
+
+        String uri = "/api/auth/process-code-login";
+
+        ProcessCodeLoginRequest payload = new ProcessCodeLoginRequest(processCode);
+
+        String body = vnptRestClient.post()
+                .uri(uri, processCode)
+                .contentType(MediaType.APPLICATION_JSON)
+                .accept(MediaType.APPLICATION_JSON)
+                .body(payload)
+                .retrieve()
+                .body(String.class);
+
+        if (body == null || body.isBlank()) {
+            return VnptResult.error("VNPT response is null");
+        }
+        try {
+            ProcessLoginInfoDto dto = mapper.readValue(body, ProcessLoginInfoDto.class);
+            return VnptResult.success(dto);
+
+        } catch (Exception e) {
+            return VnptResult.error("Cannot parse VNPT response: "
+                    + e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
+    }
+
+    private ProcessLoginInfoDto parseProcessLogin(String body) {
+        try {
+            JsonNode root = mapper.readTree(body);
+            JsonNode data = root.get("data");
+            JsonNode dataEl;
+            if (data != null && data.isObject()) {
+                dataEl = data;
+            } else if (root.has("token") && root.has("document")) {
+                dataEl = root;
+            } else {
+                throw new IllegalStateException("Unexpected response format: " + body);
+            }
+
+            String accessToken = null;
+            JsonNode tokenNode = dataEl.get("token");
+            if (tokenNode != null && !tokenNode.isNull()) {
+                if (tokenNode.isString()) {
+                    accessToken = tokenNode.asString();
+//                } else if (tokenNode.isObject()) {
+//                    JsonNode at = tokenNode.get("accessToken");
+//                    if (at != null && at.isString()) {
+//                        accessToken = at.asString();
+//                    }
+//                }
+                }
+            }
+
+            JsonNode document = dataEl.get("document");
+            if (document == null || document.isNull() || !document.isObject()) {
+                throw new IllegalStateException("Missing document: " + body);
+            }
+
+            String waitingProcessId = null;
+            Integer processedByUserId = null;
+            String documentId = null;
+            String position = null;
+            Integer pageSign = null;
+            boolean isOtp = false;
+
+            JsonNode downId = document.get("id");
+            if (downId != null && downId.isString()) documentId = downId.asString();
+
+            JsonNode waiting = document.get("waitingProcess");
+            if (waiting != null && waiting.isObject()) {
+                JsonNode id = waiting.get("id");
+                if (id != null && id.isString()) waitingProcessId = id.asString();
+
+                JsonNode processed = waiting.get("processedByUserId");
+                if (processed != null && processed.canConvertToInt()) processedByUserId = processed.asInt();
+
+                JsonNode pos = waiting.get("position");
+                if (pos != null && pos.isString()) position = pos.asString();
+
+                JsonNode ps = waiting.get("pageSign");
+                if (ps != null && ps.canConvertToInt()) pageSign = ps.asInt();
+
+                JsonNode accessPermission = waiting.get("accessPermission");
+                if (accessPermission != null && accessPermission.isObject()) {
+                    JsonNode value = accessPermission.get("value");
+                    if (value != null && value.canConvertToInt()) {
+                        isOtp = (value.asInt() == 7);
+                    }
+                }
+            }
+
+            return new ProcessLoginInfoDto(
+                    waitingProcessId,
+                    documentId,
+                    processedByUserId,
+                    accessToken,
+                    position,
+                    pageSign,
+                    isOtp
+            );
+
+        } catch (Exception e) {
+            throw new IllegalStateException("Cannot parse response: " + e.getMessage() + "\nRAW=" + body, e);
+        }
+    }
+
 
     private String parseToken(String body) {
         try {

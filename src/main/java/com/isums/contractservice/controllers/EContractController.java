@@ -3,6 +3,7 @@ package com.isums.contractservice.controllers;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
+import com.isums.contractservice.infrastructures.clients.VnptEContractClientImpl;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -68,5 +69,11 @@ public class EContractController {
     @GetMapping("/token")
     public String getToken() {
         return client.getToken();
+    }
+
+    @PostMapping("/processCode")
+    public ApiResponse<ProcessLoginInfoDto> processCode(@RequestBody ProcessCodeLoginRequest req) {
+        ProcessLoginInfoDto res = contractService.getAccessInfoByProcessCode(req);
+        return ApiResponses.ok(res, "Success to get access info from VNPT");
     }
 }
