@@ -16,6 +16,10 @@ public class VnptResult<T> {
     private T data;
 
     public static <T> VnptResult<T> error(String message) {
-        return new  VnptResult<>(false, message, null);
+        return new VnptResult<>(false, message, null);
+    }
+
+    public static <T> VnptResult<T> success(T data) {
+        return new VnptResult<>(true, null, data);
     }
 }

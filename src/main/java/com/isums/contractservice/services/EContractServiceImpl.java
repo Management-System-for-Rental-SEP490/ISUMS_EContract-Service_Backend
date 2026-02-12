@@ -25,6 +25,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -51,6 +52,11 @@ public class EContractServiceImpl implements EContractService {
     private final AssetGrpcClient assetGrpcClient;
     private final EContractRepository eContractRepository;
     private final EContractMapper eContractMapper;
+    private final MagicLinkTokenService magicLinkTokenService;
+    private final VnptEContractClient vnptEContractClient;
+
+    @Value("${app.public-base-url}")
+    private String publicBaseUrl;
 
     private final DateTimeFormatter dayMonthYear = DateTimeFormatter.ofPattern("dd/MM/yyyy")
             .withZone(ZoneOffset.UTC);
@@ -175,11 +181,15 @@ public class EContractServiceImpl implements EContractService {
             }
 
             eContract.setStatus(EContractStatus.CONFIRM);
-            String url = "sso.isums.pro" + eContract.getId();
+
+            String tokenAuth = magicLinkTokenService.create(eContract.getId(), eContract.getUserId());
+            String url = publicBaseUrl + "/econtract/view/" + eContract.getId() + "?token=" + tokenAuth;
             ConfirmAndSendToTenantEvent event = ConfirmAndSendToTenantEvent.builder()
                     .url(url)
                     .tenantId(eContract.getUserId())
                     .build();
+
+            eContractRepository.save(eContract);
 
             kafkaTemplate.send("confirmAndSendToTenant-topic", event);
 
@@ -206,13 +216,39 @@ public class EContractServiceImpl implements EContractService {
                 throw new IllegalStateException("Failed to create document on VNPT: " + errorMsg);
             }
 
-            eContractRepository.save(eContract);
-
             return result;
         } catch (Exception ex) {
             log.error("confirmAndSendToTenant failed", ex);
             throw new IllegalStateException("confirmAndSendToTenant failed");
         }
+    }
+
+    @Override
+    public ProcessLoginInfoDto getAccessInfoByProcessCode(ProcessCodeLoginRequest req) {
+        try {
+            ProcessLoginInfoDto info = vnptEContractClient.getAccessInfoByProcessCode(req.processCode()).getData();
+            if (info == null) {
+                throw new IllegalStateException("Failed to get access info from VNPT");
+            }
+
+            UUID eContractId = UUID.fromString(info.documentId());
+
+            getEContractByMagicToken(eContractId, req.token());
+            return info;
+        } catch (Exception ex) {
+            log.error("getAccessInfoByProcessCode failed", ex);
+            throw new IllegalStateException("getAccessInfoByProcessCode failed");
+        }
+    }
+
+    private void getEContractByMagicToken(UUID contractId, String token) {
+        var payloadOpt = magicLinkTokenService.verify(token);
+        if (payloadOpt.isEmpty())
+            throw new IllegalStateException("Invalid/expired magic link token");
+
+        var payload = payloadOpt.get();
+        if (!payload.contractId().equals(contractId))
+            throw new IllegalStateException("Contract not found");
     }
 
     private EContractDto CreateDocument(UUID actorId, UUID tenantId, CreateEContractRequest req, HouseResponse house) {
