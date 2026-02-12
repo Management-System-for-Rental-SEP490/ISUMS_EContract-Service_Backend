@@ -185,7 +185,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
                     .headers(h -> bearer(h, token))
-                    .body(users)
+                    .body(List.of(users))
                     .retrieve()
                     .body(String.class);
 
