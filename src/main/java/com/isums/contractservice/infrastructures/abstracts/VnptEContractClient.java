@@ -11,4 +11,6 @@ public interface VnptEContractClient {
     String getToken();
     VnptResult<List<VnptUserDto>> CreateOrUpdateUser(String token, VnptUserUpsert user);
     VnptResult<ProcessLoginInfoDto> getAccessInfoByProcessCode (String processCode);
+    VnptResult<VnptDocumentDto> UpdateProcess(String token, VnptUpdateProcessDTO update);
+    VnptResult<VnptDocumentDto> sendProcess(String token, String documentId);
 }

@@ -234,6 +234,79 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         }
     }
 
+    @Override
+    public VnptResult<VnptDocumentDto> UpdateProcess(String token, VnptUpdateProcessDTO update) {
+        final String uri = "/api/documents/update-process";
+
+        return safeCall(HttpMethod.POST, uri, () -> {
+            if (token == null || token.isBlank()) {
+                return VnptResult.error("Missing token");
+            }
+
+            if (update == null) {
+                return VnptResult.error("Missing update payload");
+            }
+
+            String raw = vnptRestClient.post()
+                    .uri(uri)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .headers(h -> bearer(h, token))
+                    .body(update)
+                    .retrieve()
+                    .body(String.class);
+
+            if (raw == null || raw.isBlank()) {
+                return VnptResult.error("VNPT returned empty body");
+            }
+
+            int max = 4000;
+            String clipped = raw.length() > max ? raw.substring(0, max) + "..." : raw;
+
+            try {
+                return mapper.readValue(raw, new TypeReference<VnptResult<VnptDocumentDto>>() {
+                });
+            } catch (Exception e) {
+                return VnptResult.error("Cannot parse VNPT response: " + e.getClass().getSimpleName() + ": " + e.getMessage()
+                        + "\nRAW=" + clipped);
+            }
+        });
+    }
+
+    public VnptResult<VnptDocumentDto> sendProcess(String token, String documentId) {
+        final String uri = "/api/documents/send-process/{documentId}";
+        return safeCall(HttpMethod.POST, uri, () -> {
+            if (token == null || token.isBlank()) {
+                return VnptResult.error("Missing token");
+            }
+
+            if (documentId == null || documentId.isBlank()) {
+                return VnptResult.error("Missing documentId");
+            }
+
+            String raw = vnptRestClient.post()
+                    .uri(uri, documentId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .headers(h -> bearer(h, token))
+                    .retrieve()
+                    .body(String.class);
+
+            if (raw == null || raw.isBlank()) {
+                return VnptResult.error("VNPT returned empty body");
+            }
+
+            int max = 4000;
+            String clipped = raw.length() > max ? raw.substring(0, max) + "..." : raw;
+            try {
+                return VnptResult.success(mapper.readValue(raw, VnptDocumentDto.class));
+            } catch (Exception e) {
+                return VnptResult.error("Cannot parse VNPT response: " + e.getClass().getSimpleName() + ": " + e.getMessage()
+                        + "\nRAW=" + clipped);
+            }
+        });
+    }
+
     private ProcessLoginInfoDto parseProcessLogin(String body) {
         try {
             JsonNode root = mapper.readTree(body);

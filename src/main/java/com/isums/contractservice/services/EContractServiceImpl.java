@@ -241,6 +241,88 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
+    @Override
+    public VnptDocumentDto readyEContract(ReadyEContractRequest req) {
+        try {
+
+            var payload = magicLinkTokenService.verify(req.token())
+                    .orElseThrow(() -> new IllegalStateException("Invalid/expired magic link token"));
+
+            UUID eContractId = req.eContractId();
+            if (!payload.contractId().equals(eContractId)) {
+                throw new IllegalStateException("Token is not for this contract");
+            }
+
+            EContract eContract = eContractRepository.findById(eContractId)
+                    .orElseThrow(() -> new IllegalStateException("Contract with id " + eContractId + " not found"));
+
+            byte[] pdfBytes = renderHtmlToPdf(eContract.getHtml());
+
+            Map<String, AnchorBoxVnpt> anchors = findAnchors(pdfBytes, List.of("SIGN_A", "SIGN_B"));
+            VnptPosition positionA = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 0, 20, 60);
+            VnptPosition positionB = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 0, 20, 60);
+
+            String No = "EC_" + Instant.now().getEpochSecond() + "_" + eContract.getUserId();
+            if (No.length() > 40) {
+                No = No.substring(0, 40);
+            }
+
+            FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No);
+            CreateDocumentDto createDocumentDto = new CreateDocumentDto(fileInfoDto, "Rental EContract", "Rental EContract", 3059, 3110, No);
+
+            String tokenVnpt = econtractClient.getToken();
+            VnptResult<VnptDocumentDto> result = econtractClient.createDocument(tokenVnpt, createDocumentDto);
+
+            if (result == null || result.getData() == null) {
+                String errorMsg = (result != null) ? result.getMessage() : "Unknown error";
+                log.error("Failed to create document on VNPT: {}", errorMsg);
+                throw new IllegalStateException("Failed to create document on VNPT: " + errorMsg);
+            }
+
+            String documentId = result.getData().id();
+            eContract.setDocumentId(documentId);
+            eContractRepository.save(eContract);
+//            result.getData().withSignMeta(positionA.pos(), positionB.pos());
+            String vnptToken = vnptEContractClient.getToken();
+            String userCodeFirst = eContract.getUserId().toString();
+
+            updateProcess(vnptToken, documentId, userCodeFirst, "hoangtuzami", positionA.pos(), positionB.pos(), positionA.pageSign());
+
+            return econtractClient.sendProcess(vnptToken, documentId).getData();
+
+        } catch (Exception ex) {
+            log.error("readyEContract failed", ex);
+            throw new IllegalStateException("readyEContract failed");
+        }
+    }
+
+    private void updateProcess(String token, String documentId, String userCodeFirst, String userCodeSecond, String positionA, String positionB, int pageSign) {
+
+        List<ProcessesRequestDTO> processes = List.of(
+                new ProcessesRequestDTO(
+                        1,
+                        userCodeFirst,
+                        "D",       // tuỳ access permission của VNPT
+                        positionA,
+                        pageSign
+                ),
+                new ProcessesRequestDTO(
+                        2,
+                        userCodeSecond,
+                        "D",
+                        positionB,
+                        pageSign
+                )
+        );
+        var request = new VnptUpdateProcessDTO(
+                documentId,
+                true,
+                processes
+        );
+
+        econtractClient.UpdateProcess(token, request);
+    }
+
     private void getEContractByMagicToken(UUID contractId, String token) {
         var payloadOpt = magicLinkTokenService.verify(token);
         if (payloadOpt.isEmpty())
