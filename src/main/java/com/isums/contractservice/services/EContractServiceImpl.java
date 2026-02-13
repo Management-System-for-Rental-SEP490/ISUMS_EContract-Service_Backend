@@ -301,18 +301,18 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
-    public EContractDto getEContractByDocumentId(GetEContractOutSystemRequest req) {
+    public EContractDto getEContractOutSystem(GetEContractOutSystemRequest req) {
         try {
             var payload = magicLinkTokenService.verify(req.token())
                     .orElseThrow(() -> new IllegalStateException("Invalid/expired magic link token"));
 
-            EContract eContract = eContractRepository.findByDocumentId(req.documentId())
-                    .orElseThrow(() -> new IllegalStateException("EContract not found"));
-
-            UUID eContractId = eContract.getId();
+            UUID eContractId = UUID.fromString(req.eContractId());
             if (!payload.contractId().equals(eContractId)) {
                 throw new IllegalStateException("Token is not for this contract");
             }
+
+            EContract eContract = eContractRepository.findById(eContractId)
+                    .orElseThrow(() -> new IllegalStateException("EContract not found"));
 
             return eContractMapper.contractToDto(eContract);
         } catch (Exception ex) {
