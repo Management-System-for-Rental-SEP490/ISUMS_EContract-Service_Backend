@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping
+@RequestMapping("/api/econtracts")
 @RequiredArgsConstructor
 public class EContractController {
     private final EContractService contractService;
