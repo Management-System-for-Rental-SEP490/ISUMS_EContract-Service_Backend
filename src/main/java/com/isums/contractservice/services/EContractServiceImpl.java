@@ -226,14 +226,21 @@ public class EContractServiceImpl implements EContractService {
     @Override
     public ProcessLoginInfoDto getAccessInfoByProcessCode(ProcessCodeLoginRequest req) {
         try {
+
+
             ProcessLoginInfoDto info = vnptEContractClient.getAccessInfoByProcessCode(req.processCode()).getData();
             if (info == null) {
                 throw new IllegalStateException("Failed to get access info from VNPT");
             }
 
-            UUID eContractId = UUID.fromString(info.documentId());
+            var payload = magicLinkTokenService.verify(req.token())
+                    .orElseThrow(() -> new IllegalStateException("Invalid/expired magic link token"));
 
-            getEContractByMagicToken(eContractId, req.token());
+//            UUID eContractId = UUID.fromString(req.eContractId());
+//            if (!payload.contractId().equals(eContractId)) {
+//                throw new IllegalStateException("Token is not for this contract");
+//            }
+
             return info;
         } catch (Exception ex) {
             log.error("getAccessInfoByProcessCode failed", ex);
@@ -248,7 +255,7 @@ public class EContractServiceImpl implements EContractService {
             var payload = magicLinkTokenService.verify(req.token())
                     .orElseThrow(() -> new IllegalStateException("Invalid/expired magic link token"));
 
-            UUID eContractId = req.eContractId();
+            UUID eContractId = UUID.fromString(req.eContractId());
             if (!payload.contractId().equals(eContractId)) {
                 throw new IllegalStateException("Token is not for this contract");
             }
@@ -262,12 +269,9 @@ public class EContractServiceImpl implements EContractService {
             VnptPosition positionA = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 0, 20, 60);
             VnptPosition positionB = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 0, 20, 60);
 
-            String No = "EC_" + Instant.now().getEpochSecond() + "_" + eContract.getUserId();
-            if (No.length() > 40) {
-                No = No.substring(0, 40);
-            }
+            String No = "EC_" + Instant.now().getEpochSecond();
 
-            FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No);
+            FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No + ".pdf");
             CreateDocumentDto createDocumentDto = new CreateDocumentDto(fileInfoDto, "Rental EContract", "Rental EContract", 3059, 3110, No);
 
             String tokenVnpt = econtractClient.getToken();
