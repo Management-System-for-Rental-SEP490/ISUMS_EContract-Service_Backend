@@ -20,4 +20,6 @@ public interface EContractService {
     public ProcessLoginInfoDto getAccessInfoByProcessCode(ProcessCodeLoginRequest req);
 
     public VnptDocumentDto readyEContract(ReadyEContractRequest req);
+
+    public EContractDto getEContractByDocumentId(GetEContractOutSystemRequest req);
 }
