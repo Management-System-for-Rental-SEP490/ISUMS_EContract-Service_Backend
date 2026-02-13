@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+option java_multiple_files = true;
+option java_package = "com.isums.contractservice.grpc";
+option java_outer_classname = "AssetProto";
+
+import "google/protobuf/timestamp.proto";
+
+service AssetGrpcService {
+  rpc GetAssetItemsByHouseId(GetAssetItemsByHouseIdRequest) returns (GetAssetItemsResponse);
+}
+
+message GetAssetItemsByHouseIdRequest {
+  string house_id = 1;
+}
+
+message GetAssetItemsResponse {
+  repeated AssetItemDto asset_items = 1;
+}
+
+
+message AssetItemDto {
+  string id = 1;
+  string house_id = 2;
+
+  AssetCategoryDto category = 3;
+
+  string display_name = 4;
+  string serial_number = 5;
+  string nfc_id = 6;
+
+  int32 condition_percent = 7;
+  AssetStatus status = 8;
+
+  repeated AssetImageDto images = 9;
+  repeated AssetEventDto events = 10;
+}
+
+message AssetCategoryDto {
+  string id = 1;
+  string name = 2;
+  int32 compensation_percent = 3;
+  string description = 4;
+}
+
+message AssetImageDto {
+  string id = 1;
+  string image_url = 2;
+  string note = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message AssetEventDto {
+  string id = 1;
+  AssetEventType event_type = 2;
+  string description = 3;
+  google.protobuf.Timestamp created_at = 4;
+  string created_by = 5;
+}
+
+enum AssetStatus {
+  ASSET_STATUS_UNSPECIFIED = 0;
+  ASSET_STATUS_AVAILABLE = 1;
+  ASSET_STATUS_IN_USE = 2;
+  ASSET_STATUS_BROKEN = 3;
+  ASSET_STATUS_DISPOSED = 4;
+  ASSET_STATUS_DELETED = 5;
+}
+
+enum AssetEventType {
+  ASSET_EVENT_TYPE_UNSPECIFIED = 0;
+  ASSET_EVENT_TYPE_CREATED = 1;
+  ASSET_EVENT_TYPE_CHECKED = 2;
+  ASSET_EVENT_TYPE_DAMAGED = 3;
+  ASSET_EVENT_TYPE_REPAIRED = 4;
+  ASSET_EVENT_TYPE_REPLACED = 5;
+  ASSET_EVENT_TYPE_DISPOSED = 6;
+}

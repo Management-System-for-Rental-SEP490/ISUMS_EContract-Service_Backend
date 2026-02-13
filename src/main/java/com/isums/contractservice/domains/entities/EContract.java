@@ -10,6 +10,7 @@ import org.hibernate.annotations.UuidGenerator;
 
 import java.io.Serializable;
 import java.time.Instant;
+import java.util.UUID;
 
 @Entity
 @Table(name = "EContracts")
@@ -22,14 +23,19 @@ public class EContract implements Serializable {
     @Id
     @GeneratedValue
     @UuidGenerator
-    private String id;
+    private UUID id;
+    // document form vnpt
+    @Column(unique = true)
+    private String documentId;
     @Column(nullable = false)
-    private String userId;
+    private UUID userId;
+    @Column(nullable = false, columnDefinition = "text")
+    private String html;
     private String name;
-    @Column(nullable = false)
     private String snapshotKey;
+    @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EContractStatus status;
-    private String CreatedBy;
-    private Instant CreatedAt;
+    private UUID createdBy;
+    private Instant createdAt;
 }

@@ -1,6 +1,6 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '4.0.1'
+    id 'org.springframework.boot' version '4.0.2'
     id 'io.spring.dependency-management' version '1.1.7'
     id 'com.google.protobuf' version '0.9.5'
 }
@@ -32,7 +32,8 @@ dependencyManagement {
 }
 
 ext {
-    set('springGrpcVersion', "1.0.1")
+    set('springGrpcVersion', "1.0.2")
+    springAiVersion = "2.0.0-M2"
 }
 
 dependencies {
@@ -48,12 +49,23 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-kafka'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'io.grpc:grpc-services'
-//    implementation 'net.devh:grpc-server-spring-boot-starter:3.1.0.RELEASE'
-//    implementation 'net.devh:grpc-client-spring-boot-starter:3.1.0.RELEASE'
     implementation 'javax.annotation:javax.annotation-api:1.3.2'
     implementation platform("com.google.protobuf:protobuf-bom:4.33.4")
     implementation "com.google.protobuf:protobuf-java"
+    implementation "org.springframework.boot:spring-boot-starter-validation"
     implementation 'org.springframework.grpc:spring-grpc-server-web-spring-boot-starter'
+    implementation "org.springframework.grpc:spring-grpc-client-spring-boot-starter"
+    implementation "org.springframework.grpc:spring-grpc-spring-boot-starter"
+    implementation "io.grpc:grpc-netty-shaded"
+    implementation "io.github.openhtmltopdf:openhtmltopdf-pdfbox:1.1.37"
+    implementation 'org.apache.pdfbox:pdfbox:3.0.6'
+    implementation 'org.apache.pdfbox:pdfbox-io:3.0.6'
+    implementation "org.mapstruct:mapstruct:1.6.3"
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.1'
+    annotationProcessor "org.mapstruct:mapstruct-processor:1.6.3"
+    testAnnotationProcessor "org.mapstruct:mapstruct-processor:1.6.3"
+    annotationProcessor "org.projectlombok:lombok-mapstruct-binding:0.2.0"
+    testAnnotationProcessor "org.projectlombok:lombok-mapstruct-binding:0.2.0"
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'org.postgresql:postgresql'
     annotationProcessor 'org.projectlombok:lombok'
@@ -66,6 +78,7 @@ dependencies {
 dependencyManagement {
     imports {
         mavenBom "org.springframework.grpc:spring-grpc-dependencies:${springGrpcVersion}"
+        mavenBom "org.springframework.ai:spring-ai-bom:$springAiVersion"
     }
 }
 
