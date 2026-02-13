@@ -88,4 +88,10 @@ public class EContractController {
         EContractDto res = contractService.getEContractOutSystem(req);
         return ApiResponses.ok(res, "Success to get e-contract outsystem");
     }
+
+    @PostMapping("/sign")
+    public ApiResponse<ProcessResponse> signEContract(@RequestBody VnptProcessDto req) {
+        ProcessResponse res = contractService.signProcess(req);
+        return ApiResponses.ok(res, "Success to sign e-contract");
+    }
 }

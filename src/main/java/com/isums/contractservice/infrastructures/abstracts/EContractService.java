@@ -22,4 +22,6 @@ public interface EContractService {
     public VnptDocumentDto readyEContract(ReadyEContractRequest req);
 
     public EContractDto getEContractOutSystem(GetEContractOutSystemRequest req);
+
+    public ProcessResponse signProcess(VnptProcessDto process);
 }
