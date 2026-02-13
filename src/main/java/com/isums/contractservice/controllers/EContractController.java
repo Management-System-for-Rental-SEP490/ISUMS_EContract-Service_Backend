@@ -85,7 +85,7 @@ public class EContractController {
 
     @GetMapping("/outsystem")
     public ApiResponse<EContractDto> getEContractByDocumentId(@RequestBody GetEContractOutSystemRequest req) {
-        EContractDto res = contractService.getEContractByDocumentId(req);
-        return ApiResponses.ok(res, "Success to get e-contract by document id");
+        EContractDto res = contractService.getEContractOutSystem(req);
+        return ApiResponses.ok(res, "Success to get e-contract outsystem");
     }
 }

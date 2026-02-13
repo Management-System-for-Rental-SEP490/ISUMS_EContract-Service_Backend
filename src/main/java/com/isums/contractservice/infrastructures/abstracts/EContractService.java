@@ -21,5 +21,5 @@ public interface EContractService {
 
     public VnptDocumentDto readyEContract(ReadyEContractRequest req);
 
-    public EContractDto getEContractByDocumentId(GetEContractOutSystemRequest req);
+    public EContractDto getEContractOutSystem(GetEContractOutSystemRequest req);
 }
