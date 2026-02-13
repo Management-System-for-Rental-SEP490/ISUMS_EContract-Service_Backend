@@ -300,6 +300,27 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
+    @Override
+    public EContractDto getEContractByDocumentId(GetEContractOutSystemRequest req) {
+        try {
+            var payload = magicLinkTokenService.verify(req.token())
+                    .orElseThrow(() -> new IllegalStateException("Invalid/expired magic link token"));
+
+            EContract eContract = eContractRepository.findByDocumentId(req.documentId())
+                    .orElseThrow(() -> new IllegalStateException("EContract not found"));
+
+            UUID eContractId = eContract.getId();
+            if (!payload.contractId().equals(eContractId)) {
+                throw new IllegalStateException("Token is not for this contract");
+            }
+
+            return eContractMapper.contractToDto(eContract);
+        } catch (Exception ex) {
+            log.error("getEContractByDocumentId failed", ex);
+            throw new IllegalStateException("getEContractByDocumentId failed");
+        }
+    }
+
     private void updateProcess(String token, String documentId, String userCodeFirst, String userCodeSecond, String positionA, String positionB, int pageSign) {
 
         List<ProcessesRequestDTO> processes = List.of(

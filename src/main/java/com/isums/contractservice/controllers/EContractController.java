@@ -82,4 +82,10 @@ public class EContractController {
         VnptDocumentDto res = contractService.readyEContract(req);
         return ApiResponses.ok(res, "Success to ready e-contract");
     }
+
+    @GetMapping("/outsystem")
+    public ApiResponse<EContractDto> getEContractByDocumentId(@RequestBody GetEContractOutSystemRequest req) {
+        EContractDto res = contractService.getEContractByDocumentId(req);
+        return ApiResponses.ok(res, "Success to get e-contract by document id");
+    }
 }

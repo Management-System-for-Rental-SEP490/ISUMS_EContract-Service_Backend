@@ -27,6 +27,11 @@ public class SecurityConfig {
                                 "/v3/api-docs",
                                 "/v3/api-docs/**"
                         ).permitAll()
+                        .requestMatchers(
+                                "/api/econtracts/processCode",
+                                "/api/econtracts/ready",
+                                "/api/econtracts/outsystem"
+                        ).permitAll()
                         .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )
