@@ -9,7 +9,9 @@ import org.springframework.context.annotation.Configuration;
 public class OpenApiStripServersConfig {
 
     @Bean
-    public OpenApiCustomizer stripServers() {
-        return (OpenAPI openApi) -> openApi.setServers(null);
+    public OpenApiCustomizer relativeServers() {
+        return openApi -> openApi.setServers(
+                java.util.List.of(new io.swagger.v3.oas.models.servers.Server().url(""))
+        );
     }
 }

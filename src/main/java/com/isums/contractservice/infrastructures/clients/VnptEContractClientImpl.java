@@ -307,6 +307,42 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         });
     }
 
+    @Override
+    public VnptResult<ProcessResponse> signProcess(String token, VnptProcessDto process) {
+        final String uri = "/api/documents/process";
+        return safeCall(HttpMethod.POST, uri, () -> {
+            if (token == null || token.isBlank()) {
+                return VnptResult.error("Missing token");
+            }
+
+            if (process == null) {
+                return VnptResult.error("Missing process");
+            }
+
+            String raw = vnptRestClient.post()
+                    .uri(uri)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .headers(h -> bearer(h, token))
+                    .body(process)
+                    .retrieve()
+                    .body(String.class);
+
+            if (raw == null || raw.isBlank()) {
+                return VnptResult.error("VNPT returned empty body");
+            }
+
+            int max = 4000;
+            String clipped = raw.length() > max ? raw.substring(0, max) + "..." : raw;
+            try {
+                return VnptResult.success(mapper.readValue(raw, ProcessResponse.class));
+            } catch (Exception e) {
+                return VnptResult.error("Cannot parse VNPT response: " + e.getClass().getSimpleName() + ": " + e.getMessage()
+                        + "\nRAW=" + clipped);
+            }
+        });
+    }
+
     private ProcessLoginInfoDto parseProcessLogin(String body) {
         try {
             JsonNode root = mapper.readTree(body);

@@ -2,6 +2,7 @@ package com.isums.contractservice.configurations;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.web.SecurityFilterChain;
@@ -30,9 +31,11 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/econtracts/processCode",
                                 "/api/econtracts/ready",
-                                "/api/econtracts/outsystem"
+                                "/api/econtracts/outsystem",
+                                "/api/econtracts/sign"
                         ).permitAll()
-                        .requestMatchers(org.springframework.http.HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers("/error").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> {

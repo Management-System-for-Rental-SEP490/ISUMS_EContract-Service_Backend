@@ -266,8 +266,8 @@ public class EContractServiceImpl implements EContractService {
             byte[] pdfBytes = renderHtmlToPdf(eContract.getHtml());
 
             Map<String, AnchorBoxVnpt> anchors = findAnchors(pdfBytes, List.of("SIGN_A", "SIGN_B"));
-            VnptPosition positionA = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 0, 20, 60);
-            VnptPosition positionB = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 0, 20, 60);
+            VnptPosition positionA = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 35, 20, 60);
+            VnptPosition positionB = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 35, 20, 60);
 
             String No = "EC_" + Instant.now().getEpochSecond();
 
@@ -318,6 +318,29 @@ public class EContractServiceImpl implements EContractService {
         } catch (Exception ex) {
             log.error("getEContractByDocumentId failed", ex);
             throw new IllegalStateException("getEContractByDocumentId failed");
+        }
+    }
+
+    @Override
+    public ProcessResponse signProcess(VnptProcessDto process) {
+        try {
+            var payload = magicLinkTokenService.verify(process.token());
+            if (payload.isEmpty()) {
+                throw new IllegalStateException("Invalid/expired magic link token");
+            }
+
+            String token = vnptEContractClient.getToken();
+            var processResponse = vnptEContractClient.signProcess(token, process);
+
+            if (processResponse.getData() == null) {
+                throw new IllegalStateException("Failed to sign process on VNPT");
+            }
+
+            return processResponse.getData();
+
+        } catch (Exception ex) {
+            log.error("signProcess failed", ex);
+            throw new IllegalStateException("signProcess failed");
         }
     }
 
