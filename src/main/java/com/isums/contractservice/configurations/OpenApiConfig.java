@@ -22,7 +22,7 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("EContract Service API")
                         .version("v1")
-                        .description("Swagger UI + JWT Bearer"))
+                        .description("Có nhiều thứ rất là khó nói vậy nên là lá đò"))
                 .addSecurityItem(new SecurityRequirement().addList(BEARER_SCHEME))
                 .components(new Components().addSecuritySchemes(
                         BEARER_SCHEME,

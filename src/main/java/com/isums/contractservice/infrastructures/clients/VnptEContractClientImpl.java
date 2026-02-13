@@ -214,7 +214,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         ProcessCodeLoginRequest payload = new ProcessCodeLoginRequest(processCode);
 
         String body = vnptRestClient.post()
-                .uri(uri, processCode)
+                .uri(uri)
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON)
                 .body(payload)
@@ -225,7 +225,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             return VnptResult.error("VNPT response is null");
         }
         try {
-            ProcessLoginInfoDto dto = mapper.readValue(body, ProcessLoginInfoDto.class);
+            ProcessLoginInfoDto dto = parseProcessLogin(body);
             return VnptResult.success(dto);
 
         } catch (Exception e) {
@@ -325,12 +325,11 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             if (tokenNode != null && !tokenNode.isNull()) {
                 if (tokenNode.isString()) {
                     accessToken = tokenNode.asString();
-//                } else if (tokenNode.isObject()) {
-//                    JsonNode at = tokenNode.get("accessToken");
-//                    if (at != null && at.isString()) {
-//                        accessToken = at.asString();
-//                    }
-//                }
+                } else if (tokenNode.isObject()) {
+                    JsonNode at = tokenNode.get("accessToken");
+                    if (at != null && at.isString()) {
+                        accessToken = at.asString();
+                    }
                 }
             }
 
