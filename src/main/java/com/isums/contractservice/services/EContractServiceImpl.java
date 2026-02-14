@@ -19,13 +19,15 @@
     import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
     import lombok.RequiredArgsConstructor;
     import lombok.extern.slf4j.Slf4j;
-    import org.apache.commons.text.StringEscapeUtils;
     import org.apache.pdfbox.Loader;
     import org.apache.pdfbox.pdmodel.PDDocument;
     import org.apache.pdfbox.pdmodel.PDPage;
     import org.apache.pdfbox.pdmodel.common.PDRectangle;
     import org.apache.pdfbox.text.PDFTextStripper;
     import org.apache.pdfbox.text.TextPosition;
+    import org.jsoup.Jsoup;
+    import org.jsoup.nodes.Document;
+    import org.jsoup.nodes.Entities;
     import org.springframework.beans.factory.annotation.Value;
     import org.springframework.cache.Cache;
     import org.springframework.cache.CacheManager;
@@ -584,10 +586,10 @@
         private byte[] renderHtmlToPdf(String html) {
             try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-                String normalized = StringEscapeUtils.unescapeHtml4(html);
-
                 String baseUri = Objects.requireNonNull(getClass().getResource("/")).toExternalForm();
-    
+
+                String xhtml = toXhtml(html, baseUri);
+
                 PdfRendererBuilder builder = new PdfRendererBuilder();
                 builder.usePdfAConformance(PdfRendererBuilder.PdfAConformance.PDFA_1_A);
     
@@ -603,7 +605,7 @@
                 builder.useFont(() -> cp("fonts/SVN-Times New Roman 2 bold italic.ttf"),
                         "Times New Roman", 700, BaseRendererBuilder.FontStyle.ITALIC, true);
     
-                builder.withHtmlContent(normalized, baseUri);
+                builder.withHtmlContent(xhtml, baseUri);
                 builder.toStream(out);
                 builder.run();
     
@@ -612,6 +614,27 @@
                 throw new IllegalStateException("Render PDF failed", e);
             }
         }
+
+        private String toXhtml(String html, String baseUri) {
+            if (html == null) html = "";
+
+            Document doc = Jsoup.parse(html, baseUri);
+
+            if (doc.head().selectFirst("meta[charset]") == null) {
+                doc.head().prependElement("meta").attr("charset", "UTF-8");
+            }
+
+            if (doc.head().selectFirst("base[href]") == null) {
+                doc.head().prependElement("base").attr("href", baseUri);
+            }
+
+            doc.outputSettings()
+                    .charset("UTF-8")
+                    .syntax(Document.OutputSettings.Syntax.xml)
+                    .escapeMode(Entities.EscapeMode.xhtml);
+
+            return doc.html();
+            }
     
         private InputStream cp(String path) {
             InputStream in = Thread.currentThread().getContextClassLoader().getResourceAsStream(path);
