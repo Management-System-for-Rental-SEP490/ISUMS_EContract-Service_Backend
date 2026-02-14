@@ -308,7 +308,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
     }
 
     @Override
-    public VnptResult<ProcessResponse> signProcess(String token, VnptProcessDto process) {
+    public VnptResult<ProcessResponse> signProcess(VnptProcessDto process) {
         final String uri = "/api/documents/process";
         return safeCall(HttpMethod.POST, uri, () -> {
             if (token == null || token.isBlank()) {
@@ -323,7 +323,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
                     .uri(uri)
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
-                    .headers(h -> bearer(h, token))
+                    .headers(h -> bearer(h, process.token()))
                     .body(process)
                     .retrieve()
                     .body(String.class);
