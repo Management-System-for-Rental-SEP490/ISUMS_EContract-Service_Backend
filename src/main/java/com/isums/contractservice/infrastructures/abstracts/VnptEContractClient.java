@@ -19,5 +19,5 @@ public interface VnptEContractClient {
 
     VnptResult<VnptDocumentDto> sendProcess(String token, String documentId);
 
-    VnptResult<ProcessResponse> signProcess(String token, VnptProcessDto process);
+    VnptResult<ProcessResponse> signProcess(VnptProcessDto process);
 }

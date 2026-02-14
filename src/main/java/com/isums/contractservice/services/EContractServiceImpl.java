@@ -337,13 +337,7 @@
         @Override
         public ProcessResponse signProcess(VnptProcessDto process) {
             try {
-                var payload = magicLinkTokenService.verify(process.token());
-                if (payload.isEmpty()) {
-                    throw new IllegalStateException("Invalid/expired magic link token");
-                }
-    
-                String token = vnptEContractClient.getToken();
-                var processResponse = vnptEContractClient.signProcess(token, process);
+                var processResponse = vnptEContractClient.signProcess(process);
     
                 if (processResponse.getData() == null) {
                     throw new IllegalStateException("Failed to sign process on VNPT");
