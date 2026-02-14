@@ -311,9 +311,6 @@ public class VnptEContractClientImpl implements VnptEContractClient {
     public VnptResult<ProcessResponse> signProcess(VnptProcessDto process) {
         final String uri = "/api/documents/process";
         return safeCall(HttpMethod.POST, uri, () -> {
-            if (token == null || token.isBlank()) {
-                return VnptResult.error("Missing token");
-            }
 
             if (process == null) {
                 return VnptResult.error("Missing process");

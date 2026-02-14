@@ -357,14 +357,14 @@
                     new ProcessesRequestDTO(
                             1,
                             userCodeFirst,
-                            "D",       // tuỳ access permission của VNPT
+                            "E",
                             positionA,
                             pageSign
                     ),
                     new ProcessesRequestDTO(
                             2,
                             userCodeSecond,
-                            "D",
+                            "E",
                             positionB,
                             pageSign
                     )
