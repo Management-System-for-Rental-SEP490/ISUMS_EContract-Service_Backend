@@ -62,6 +62,7 @@ dependencies {
     implementation 'org.apache.pdfbox:pdfbox-io:3.0.6'
     implementation "org.mapstruct:mapstruct:1.6.3"
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.1'
+    implementation 'org.apache.commons:commons-text:1.15.0'
     annotationProcessor "org.mapstruct:mapstruct-processor:1.6.3"
     testAnnotationProcessor "org.mapstruct:mapstruct-processor:1.6.3"
     annotationProcessor "org.projectlombok:lombok-mapstruct-binding:0.2.0"
