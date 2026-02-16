@@ -1,7 +1,7 @@
 package com.isums.contractservice.infrastructures.grpcs;
 
-import com.isums.contractservice.grpc.AssetGrpcServiceGrpc;
 import com.isums.contractservice.grpc.AssetItemDto;
+import com.isums.contractservice.grpc.AssetServiceGrpc;
 import com.isums.contractservice.grpc.GetAssetItemsByHouseIdRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -13,7 +13,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AssetGrpcClient {
 
-    private final AssetGrpcServiceGrpc.AssetGrpcServiceBlockingStub assetStub;
+    private final AssetServiceGrpc.AssetServiceBlockingStub assetStub;
 
     public List<AssetItemDto> getAssetItemsByHouseId(UUID houseId) {
         var req = GetAssetItemsByHouseIdRequest.newBuilder().setHouseId(String.valueOf(houseId)).build();

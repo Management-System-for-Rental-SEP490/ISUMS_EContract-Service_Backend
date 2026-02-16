@@ -3,7 +3,6 @@ package com.isums.contractservice.controllers;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
-import com.isums.contractservice.infrastructures.clients.VnptEContractClientImpl;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -23,7 +22,7 @@ public class EContractController {
     @PostMapping
     public ApiResponse<EContractDto> createDocument(@AuthenticationPrincipal Jwt jwt, @RequestBody CreateEContractRequest req) {
         UUID actorId = extractActorId(jwt);
-        EContractDto res = contractService.CreateDraftEContract(actorId, req);
+        EContractDto res = contractService.createDraftEContract(actorId, req);
         return ApiResponses.created(res, "Success to create e-contract");
     }
 
