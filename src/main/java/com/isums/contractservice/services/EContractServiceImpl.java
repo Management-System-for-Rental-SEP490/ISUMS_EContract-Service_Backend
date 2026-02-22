@@ -97,6 +97,7 @@ public class EContractServiceImpl implements EContractService {
                             .email(req.email())
                             .phoneNumber(req.phoneNumber())
                             .identityNumber(req.identityNumber())
+                            .isEnabled(false)
                             .build();
 
 
@@ -219,7 +220,7 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
-    public void confirmAndSendToTenant(UUID contractId) {
+    public VnptDocumentDto confirmAndSendToTenant(UUID contractId) {
         try {
             EContract eContract = eContractRepository.findById(contractId)
                     .orElseThrow(() -> new IllegalStateException("Contract with id " + contractId + " not found"));
@@ -239,8 +240,11 @@ public class EContractServiceImpl implements EContractService {
 
             eContractRepository.save(eContract);
 
+            VnptDocumentDto documentDto = readyEContract(eContract);
+
             kafkaTemplate.send("confirmAndSendToTenant-topic", event);
 
+            return documentDto;
         } catch (Exception ex) {
             log.error("confirmAndSendToTenant failed", ex);
             throw new IllegalStateException("confirmAndSendToTenant failed");
@@ -272,20 +276,8 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
-    @Override
-    public VnptDocumentDto readyEContract(ReadyEContractRequest req) {
+    private VnptDocumentDto readyEContract(EContract eContract) {
         try {
-
-            var payload = magicLinkTokenService.verify(req.token())
-                    .orElseThrow(() -> new IllegalStateException("Invalid/expired magic link token"));
-
-            UUID eContractId = UUID.fromString(req.eContractId());
-            if (!payload.contractId().equals(eContractId)) {
-                throw new IllegalStateException("Token is not for this contract");
-            }
-
-            EContract eContract = eContractRepository.findById(eContractId)
-                    .orElseThrow(() -> new IllegalStateException("Contract with id " + eContractId + " not found"));
 
             byte[] pdfBytes = renderHtmlToPdf(eContract.getHtml());
 

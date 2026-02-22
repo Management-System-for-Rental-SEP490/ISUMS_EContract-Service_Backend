@@ -76,11 +76,11 @@ public class EContractController {
         return ApiResponses.ok(res, "Success to get access info from VNPT");
     }
 
-    @PostMapping("/ready")
-    public ApiResponse<VnptDocumentDto> readyEContract(@RequestBody ReadyEContractRequest req) {
-        VnptDocumentDto res = contractService.readyEContract(req);
-        return ApiResponses.ok(res, "Success to ready e-contract");
-    }
+//    @PostMapping("/ready")
+//    public ApiResponse<VnptDocumentDto> readyEContract(@RequestBody ReadyEContractRequest req) {
+//        VnptDocumentDto res = contractService.readyEContract(req);
+//        return ApiResponses.ok(res, "Success to ready e-contract");
+//    }
 
     @PostMapping("/outsystem")
     public ApiResponse<EContractDto> getEContractByDocumentId(@RequestBody GetEContractOutSystemRequest req) {

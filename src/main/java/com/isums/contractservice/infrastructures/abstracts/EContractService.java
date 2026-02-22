@@ -15,11 +15,11 @@ public interface EContractService {
 
     public EContractDto updateEContractById(UUID id, UpdateEContractRequest req);
 
-    public void confirmAndSendToTenant(UUID contractId);
+    public VnptDocumentDto confirmAndSendToTenant(UUID contractId);
 
     public ProcessLoginInfoDto getAccessInfoByProcessCode(ProcessCodeLoginRequest req);
 
-    public VnptDocumentDto readyEContract(ReadyEContractRequest req);
+//    public VnptDocumentDto readyEContract(ReadyEContractRequest req);
 
     public EContractDto getEContractOutSystem(GetEContractOutSystemRequest req);
 
