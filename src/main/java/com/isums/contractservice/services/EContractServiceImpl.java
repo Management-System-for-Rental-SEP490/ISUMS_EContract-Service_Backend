@@ -1,5 +1,6 @@
 package com.isums.contractservice.services;
 
+import com.isums.assetservice.grpc.AssetItemDto;
 import com.isums.contractservice.domains.events.ConfirmAndSendToTenantEvent;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
@@ -8,13 +9,12 @@ import com.isums.contractservice.domains.entities.EContract;
 import com.isums.contractservice.domains.entities.EContractTemplate;
 import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.events.CreateUserPlacedEvent;
-import com.isums.contractservice.grpc.AssetItemDto;
-import com.isums.contractservice.grpc.HouseResponse;
 import com.isums.contractservice.infrastructures.grpcs.AssetGrpcClient;
 import com.isums.contractservice.infrastructures.grpcs.HouseGrpcClient;
 import com.isums.contractservice.infrastructures.mappers.EContractMapper;
 import com.isums.contractservice.infrastructures.repositories.EContractRepository;
 import com.isums.contractservice.infrastructures.repositories.EContractTemplateRepository;
+import com.isums.houseservice.grpc.HouseResponse;
 import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import lombok.RequiredArgsConstructor;
@@ -224,6 +224,7 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
+    @Cacheable(value = "vnptProcessCode", key = "#req.processCode() + ':' + #req.documentNo()")
     public ProcessLoginInfoDto getAccessInfoByProcessCode(ProcessCodeLoginRequest req) {
         try {
             ProcessLoginInfoDto info = vnptEContractClient.getAccessInfoByProcessCode(req.processCode()).getData();
@@ -231,9 +232,10 @@ public class EContractServiceImpl implements EContractService {
                 throw new IllegalStateException("Failed to get access info from VNPT");
             }
 
-            UUID eContractId = UUID.fromString(info.documentId());
+            if (!info.documentNo().equals(req.documentNo())) {
+                throw new IllegalStateException("The user cannot access this document");
+            }
 
-            getEContractByMagicToken(eContractId, req.token());
             return info;
         } catch (Exception ex) {
             log.error("getAccessInfoByProcessCode failed", ex);
