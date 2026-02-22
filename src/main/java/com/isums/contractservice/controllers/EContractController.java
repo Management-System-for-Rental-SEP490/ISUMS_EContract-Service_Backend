@@ -59,9 +59,9 @@ public class EContractController {
     }
 
     @PutMapping("/confirm/{id}")
-    public ApiResponse<Void> confirmEContract(@PathVariable UUID id) {
-        contractService.confirmAndSendToTenant(id);
-        return ApiResponses.ok(null, "Success to confirm e-contract and send email to tenant");
+    public ApiResponse<VnptDocumentDto> confirmEContract(@PathVariable UUID id) {
+        var res = contractService.confirmEContract(id);
+        return ApiResponses.ok(res, "Success to confirm e-contract");
     }
 
     // Test VNPT EContract API
@@ -71,8 +71,8 @@ public class EContractController {
     }
 
     @PostMapping("/processCode")
-    public ApiResponse<ProcessLoginInfoDto> processCode(@RequestBody ProcessCodeLoginRequest req) {
-        ProcessLoginInfoDto res = contractService.getAccessInfoByProcessCode(req);
+    public ApiResponse<ProcessLoginInfoDto> processCode(@RequestBody String processCode) {
+        ProcessLoginInfoDto res = contractService.getAccessInfoByProcessCode(processCode);
         return ApiResponses.ok(res, "Success to get access info from VNPT");
     }
 
@@ -83,8 +83,8 @@ public class EContractController {
 //    }
 
     @PostMapping("/outsystem")
-    public ApiResponse<EContractDto> getEContractByDocumentId(@RequestBody GetEContractOutSystemRequest req) {
-        EContractDto res = contractService.getEContractOutSystem(req);
+    public ApiResponse<EContractDto> getEContractByDocumentId(@RequestBody String processCode) {
+        EContractDto res = contractService.getEContractOutSystem(processCode);
         return ApiResponses.ok(res, "Success to get e-contract outsystem");
     }
 
