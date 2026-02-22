@@ -23,6 +23,7 @@ configurations {
 
 repositories {
     mavenCentral()
+    mavenLocal()
 }
 
 dependencyManagement {
@@ -62,6 +63,8 @@ dependencies {
     implementation 'org.apache.pdfbox:pdfbox-io:3.0.6'
     implementation "org.mapstruct:mapstruct:1.6.3"
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.1'
+    implementation 'org.jsoup:jsoup:1.22.1'
+    implementation "com.isums:proto-common:1.0-SNAPSHOT"
     annotationProcessor "org.mapstruct:mapstruct-processor:1.6.3"
     testAnnotationProcessor "org.mapstruct:mapstruct-processor:1.6.3"
     annotationProcessor "org.projectlombok:lombok-mapstruct-binding:0.2.0"
@@ -82,23 +85,23 @@ dependencyManagement {
     }
 }
 
-protobuf {
-    protoc {
-        artifact = 'com.google.protobuf:protoc'
-    }
-    plugins {
-        grpc {
-            artifact = 'io.grpc:protoc-gen-grpc-java'
-        }
-    }
-    generateProtoTasks {
-        all()*.plugins {
-            grpc {
-                option '@generated=omit'
-            }
-        }
-    }
-}
+//protobuf {
+//    protoc {
+//        artifact = 'com.google.protobuf:protoc'
+//    }
+//    plugins {
+//        grpc {
+//            artifact = 'io.grpc:protoc-gen-grpc-java'
+//        }
+//    }
+//    generateProtoTasks {
+//        all()*.plugins {
+//            grpc {
+//                option '@generated=omit'
+//            }
+//        }
+//    }
+//}
 
 tasks.named('test') {
     useJUnitPlatform()
