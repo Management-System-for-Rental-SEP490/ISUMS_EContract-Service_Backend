@@ -15,7 +15,7 @@ public interface EContractService {
 
     public EContractDto updateEContractById(UUID id, UpdateEContractRequest req);
 
-    public VnptDocumentDto confirmAndSendToTenant(UUID contractId);
+    public VnptDocumentDto confirmEContract(UUID contractId);
 
     public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode);
 

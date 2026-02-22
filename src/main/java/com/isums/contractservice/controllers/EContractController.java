@@ -59,9 +59,9 @@ public class EContractController {
     }
 
     @PutMapping("/confirm/{id}")
-    public ApiResponse<Void> confirmEContract(@PathVariable UUID id) {
-        contractService.confirmAndSendToTenant(id);
-        return ApiResponses.ok(null, "Success to confirm e-contract and send email to tenant");
+    public ApiResponse<VnptDocumentDto> confirmEContract(@PathVariable UUID id) {
+        var res = contractService.confirmEContract(id);
+        return ApiResponses.ok(res, "Success to confirm e-contract");
     }
 
     // Test VNPT EContract API

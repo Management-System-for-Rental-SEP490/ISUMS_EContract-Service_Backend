@@ -219,7 +219,7 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
-    public VnptDocumentDto confirmAndSendToTenant(UUID contractId) {
+    public VnptDocumentDto confirmEContract(UUID contractId) {
         try {
             EContract eContract = eContractRepository.findById(contractId)
                     .orElseThrow(() -> new IllegalStateException("Contract with id " + contractId + " not found"));
