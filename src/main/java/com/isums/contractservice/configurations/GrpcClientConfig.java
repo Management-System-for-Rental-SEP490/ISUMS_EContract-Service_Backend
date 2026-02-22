@@ -1,6 +1,6 @@
 package com.isums.contractservice.configurations;
 
-import com.isums.contractservice.grpc.AssetServiceGrpc;
+import com.isums.assetservice.grpc.AssetServiceGrpc;
 import com.isums.houseservice.grpc.HouseServiceGrpc;
 import com.isums.houseservice.grpc.TenantServiceGrpc;
 import com.isums.userservice.grpc.UserServiceGrpc;

@@ -207,6 +207,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
     }
 
     @Override
+    @Cacheable(value = "vnptProcessCode", key = "#processCode")
     public VnptResult<ProcessLoginInfoDto> getAccessInfoByProcessCode(String processCode) {
 
         String uri = "/api/auth/process-code-login";
@@ -373,6 +374,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
 
             String waitingProcessId = null;
             Integer processedByUserId = null;
+            String documentNo = null;
             String documentId = null;
             String position = null;
             Integer pageSign = null;
@@ -385,6 +387,9 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             if (waiting != null && waiting.isObject()) {
                 JsonNode id = waiting.get("id");
                 if (id != null && id.isString()) waitingProcessId = id.asString();
+
+                JsonNode no = waiting.get("no");
+                if (no != null && no.isString()) documentNo = no.asString();
 
                 JsonNode processed = waiting.get("processedByUserId");
                 if (processed != null && processed.canConvertToInt()) processedByUserId = processed.asInt();
@@ -407,6 +412,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             return new ProcessLoginInfoDto(
                     waitingProcessId,
                     documentId,
+                    documentNo,
                     processedByUserId,
                     accessToken,
                     position,
