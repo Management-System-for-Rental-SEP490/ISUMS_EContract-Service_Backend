@@ -207,7 +207,6 @@ public class VnptEContractClientImpl implements VnptEContractClient {
     }
 
     @Override
-    @Cacheable(value = "vnptProcessCode", key = "#processCode")
     public VnptResult<ProcessLoginInfoDto> getAccessInfoByProcessCode(String processCode) {
 
         String uri = "/api/auth/process-code-login";

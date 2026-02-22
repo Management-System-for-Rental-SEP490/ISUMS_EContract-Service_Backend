@@ -252,16 +252,12 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
-    @Cacheable(value = "vnptProcessCode", key = "#req.processCode() + ':' + #req.documentNo()")
+    @Cacheable(value = "vnptProcessCode", key = "#req.processCode()")
     public ProcessLoginInfoDto getAccessInfoByProcessCode(ProcessCodeLoginRequest req) {
         try {
             ProcessLoginInfoDto info = vnptEContractClient.getAccessInfoByProcessCode(req.processCode()).getData();
             if (info == null) {
                 throw new IllegalStateException("Failed to get access info from VNPT");
-            }
-
-            if (!info.documentNo().equals(req.documentNo())) {
-                throw new IllegalStateException("The user cannot access this document");
             }
 
             return info;
