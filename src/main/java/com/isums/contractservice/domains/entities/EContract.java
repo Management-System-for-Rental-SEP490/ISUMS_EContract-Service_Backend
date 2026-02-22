@@ -34,6 +34,9 @@ public class EContract implements Serializable {
     @Column(name = "document_id", unique = true)
     private String documentId;
 
+    @Column(name = "document_no", unique = true)
+    private String documentNo;
+
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 

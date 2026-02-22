@@ -17,11 +17,11 @@ public interface EContractService {
 
     public VnptDocumentDto confirmAndSendToTenant(UUID contractId);
 
-    public ProcessLoginInfoDto getAccessInfoByProcessCode(ProcessCodeLoginRequest req);
+    public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode);
 
 //    public VnptDocumentDto readyEContract(ReadyEContractRequest req);
 
-    public EContractDto getEContractOutSystem(GetEContractOutSystemRequest req);
+    public EContractDto getEContractOutSystem(String processCode);
 
     public ProcessResponse signProcess(VnptProcessDto process);
 }

@@ -62,7 +62,6 @@ public class EContractServiceImpl implements EContractService {
     private final AssetGrpcClient assetGrpcClient;
     private final EContractRepository eContractRepository;
     private final EContractMapper eContractMapper;
-    private final MagicLinkTokenService magicLinkTokenService;
     private final VnptEContractClient vnptEContractClient;
     private final CacheManager cacheManager;
     private final UserGrpcClient userGrpcClient;
@@ -231,20 +230,17 @@ public class EContractServiceImpl implements EContractService {
 
             eContract.setStatus(EContractStatus.CONFIRM);
 
-            String tokenAuth = magicLinkTokenService.create(eContract.getId(), eContract.getUserId());
-            String url = publicBaseUrl + "/econtract/view/" + eContract.getId() + "?token=" + tokenAuth;
-            ConfirmAndSendToTenantEvent event = new ConfirmAndSendToTenantEvent(
-                    url,
-                    eContract.getUserId()
-            );
+//            String url = publicBaseUrl + "/econtract/view/" + eContract. + "?token=" + tokenAuth;
+//            ConfirmAndSendToTenantEvent event = new ConfirmAndSendToTenantEvent(
+//                    url,
+//                    eContract.getUserId()
+//            );
 
             eContractRepository.save(eContract);
 
-            VnptDocumentDto documentDto = readyEContract(eContract);
+            //            kafkaTemplate.send("confirmAndSendToTenant-topic", event);
 
-            kafkaTemplate.send("confirmAndSendToTenant-topic", event);
-
-            return documentDto;
+            return readyEContract(eContract);
         } catch (Exception ex) {
             log.error("confirmAndSendToTenant failed", ex);
             throw new IllegalStateException("confirmAndSendToTenant failed");
@@ -252,10 +248,9 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
-    @Cacheable(value = "vnptProcessCode", key = "#req.processCode()")
-    public ProcessLoginInfoDto getAccessInfoByProcessCode(ProcessCodeLoginRequest req) {
+    public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode) {
         try {
-            ProcessLoginInfoDto info = vnptEContractClient.getAccessInfoByProcessCode(req.processCode()).getData();
+            ProcessLoginInfoDto info = vnptEContractClient.getAccessInfoByProcessCode(processCode).getData();
             if (info == null) {
                 throw new IllegalStateException("Failed to get access info from VNPT");
             }
@@ -309,17 +304,12 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
-    public EContractDto getEContractOutSystem(GetEContractOutSystemRequest req) {
+    public EContractDto getEContractOutSystem(String processCode) {
         try {
-            var payload = magicLinkTokenService.verify(req.token())
-                    .orElseThrow(() -> new IllegalStateException("Invalid/expired magic link token"));
 
-            UUID eContractId = UUID.fromString(req.eContractId());
-            if (!payload.contractId().equals(eContractId)) {
-                throw new IllegalStateException("Token is not for this contract");
-            }
+            var vnptDocument = getAccessInfoByProcessCode(processCode);
 
-            EContract eContract = eContractRepository.findById(eContractId)
+            EContract eContract = eContractRepository.findByDocumentNo(processCode)
                     .orElseThrow(() -> new IllegalStateException("EContract not found"));
 
             return eContractMapper.contractToDto(eContract);
@@ -371,16 +361,6 @@ public class EContractServiceImpl implements EContractService {
         );
 
         econtractClient.UpdateProcess(token, request);
-    }
-
-    private void getEContractByMagicToken(UUID contractId, String token) {
-        var payloadOpt = magicLinkTokenService.verify(token);
-        if (payloadOpt.isEmpty())
-            throw new IllegalStateException("Invalid/expired magic link token");
-
-        var payload = payloadOpt.get();
-        if (!payload.contractId().equals(contractId))
-            throw new IllegalStateException("Contract not found");
     }
 
     private EContractDto createDocument(UUID actorId, UUID primaryTenantUserId, CreateEContractRequest req, HouseResponse house) {
@@ -493,28 +473,6 @@ public class EContractServiceImpl implements EContractService {
         m.appendTail(sb);
         return sb.toString();
     }
-
-    //    private String escapeXml(String input) {
-    //        if (input == null) return "";
-    //        StringBuilder sb = new StringBuilder();
-    //        for (int i = 0; i < input.length(); i++) {
-    //            char c = input.charAt(i);
-    //            switch (c) {
-    //                case '<': sb.append("&lt;"); break;
-    //                case '>': sb.append("&gt;"); break;
-    //                case '&': sb.append("&amp;"); break;
-    //                case '"': sb.append("&quot;"); break;
-    //                case '\'': sb.append("&apos;"); break;
-    //                default:
-    //                    if (c > 0x7F) {
-    //                        sb.append("&#").append((int) c).append(";");
-    //                    } else {
-    //                        sb.append(c);
-    //                    }
-    //            }
-    //        }
-    //        return sb.toString();
-    //    }
 
     private String createTableInDocumentVN(UUID houseId) {
 

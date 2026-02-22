@@ -71,8 +71,8 @@ public class EContractController {
     }
 
     @PostMapping("/processCode")
-    public ApiResponse<ProcessLoginInfoDto> processCode(@RequestBody ProcessCodeLoginRequest req) {
-        ProcessLoginInfoDto res = contractService.getAccessInfoByProcessCode(req);
+    public ApiResponse<ProcessLoginInfoDto> processCode(@RequestBody String processCode) {
+        ProcessLoginInfoDto res = contractService.getAccessInfoByProcessCode(processCode);
         return ApiResponses.ok(res, "Success to get access info from VNPT");
     }
 
@@ -83,8 +83,8 @@ public class EContractController {
 //    }
 
     @PostMapping("/outsystem")
-    public ApiResponse<EContractDto> getEContractByDocumentId(@RequestBody GetEContractOutSystemRequest req) {
-        EContractDto res = contractService.getEContractOutSystem(req);
+    public ApiResponse<EContractDto> getEContractByDocumentId(@RequestBody String processCode) {
+        EContractDto res = contractService.getEContractOutSystem(processCode);
         return ApiResponses.ok(res, "Success to get e-contract outsystem");
     }
 
