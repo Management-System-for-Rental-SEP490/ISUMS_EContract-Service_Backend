@@ -11,12 +11,16 @@ import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.events.CreateUserPlacedEvent;
 import com.isums.contractservice.infrastructures.grpcs.AssetGrpcClient;
 import com.isums.contractservice.infrastructures.grpcs.HouseGrpcClient;
+import com.isums.contractservice.infrastructures.grpcs.UserGrpcClient;
 import com.isums.contractservice.infrastructures.mappers.EContractMapper;
 import com.isums.contractservice.infrastructures.repositories.EContractRepository;
 import com.isums.contractservice.infrastructures.repositories.EContractTemplateRepository;
 import com.isums.houseservice.grpc.HouseResponse;
+import com.isums.userservice.grpc.UserResponse;
 import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
@@ -25,7 +29,13 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Entities;
+import org.jspecify.annotations.NonNull;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -54,6 +64,8 @@ public class EContractServiceImpl implements EContractService {
     private final EContractMapper eContractMapper;
     private final MagicLinkTokenService magicLinkTokenService;
     private final VnptEContractClient vnptEContractClient;
+    private final CacheManager cacheManager;
+    private final UserGrpcClient userGrpcClient;
 
     @Value("${app.public-base-url}")
     private String publicBaseUrl;
@@ -63,54 +75,39 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @CacheEvict(allEntries = true, value = "allEContracts")
-    public EContractDto CreateDraftEContract(UUID actorId, CreateEContractRequest req) {
+    public EContractDto createDraftEContract(UUID actorId, CreateEContractRequest req) {
         try {
-            UUID userId = UUID.randomUUID();
-            CreateUserPlacedEvent userEvent = CreateUserPlacedEvent.builder()
-                    .id(userId)
-                    .name(req.name())
-                    .email(req.email())
-                    .phoneNumber(req.phoneNumber())
-                    .identityNumber(req.identityNumber())
-                    .build();
 
-            // tam thoi set cung
-            List<UUID> roleIds = new ArrayList<UUID>(
-                    List.of(UUID.fromString("0aa2afc9-39c5-4652-baec-08ddc28cdda2"))
-            );
+            UUID primaryTenantUserId;
+            try {
+                String email = req.email();
+                UserResponse res = userGrpcClient.getUserByEmail(email);
+                primaryTenantUserId = UUID.fromString(res.getId());
 
-            // tam thoi set cung
-            List<Integer> departmentIds = new ArrayList<>(
-                    List.of(3110)
-            );
+            } catch (StatusRuntimeException e) {
+                if (e.getStatus().getCode() == Status.Code.NOT_FOUND) {
+                    primaryTenantUserId = UUID.randomUUID();
 
-            String token = econtractClient.getToken();
-            VnptUserUpsert vnptUser = new VnptUserUpsert(
-                    userId.toString(),
-                    req.email(),
-                    req.name(),
-                    req.email(),
-                    req.phoneNumber(),
-                    1,
-                    0,
-                    2,
-                    true,
-                    true,
-                    1,
-                    -1,
-                    departmentIds,
-                    roleIds
-            );
+                    String tokenVnpt = econtractClient.getToken();
+                    createVnptUser(tokenVnpt, primaryTenantUserId, req);
 
-            VnptResult<List<VnptUserDto>> userResult = econtractClient.CreateOrUpdateUser(token, vnptUser);
-            if (userResult == null || userResult.getData() == null) {
-                String errorMsg = (userResult != null) ? userResult.getMessage() : "Unknown error";
-                log.error("Failed to create user on VNPT: {}", errorMsg);
-                throw new IllegalStateException("Failed to create user on VNPT: " + errorMsg);
+                    CreateUserPlacedEvent userEvent = CreateUserPlacedEvent.builder()
+                            .id(primaryTenantUserId)
+                            .name(req.name())
+                            .email(req.email())
+                            .phoneNumber(req.phoneNumber())
+                            .identityNumber(req.identityNumber())
+                            .isEnabled(false)
+                            .build();
+
+
+                    kafkaTemplate.send("createUser-topic", userEvent);
+                    System.out.println("Kafka is sent " + userEvent);
+
+                } else {
+                    throw e;
+                }
             }
-
-            kafkaTemplate.send("createUser-topic", userEvent);
-            System.out.println("Kafka is sent " + userEvent);
 
             HouseResponse house = houseGrpcClient.getHouseById(req.houseId());
             if (house == null) {
@@ -119,11 +116,54 @@ public class EContractServiceImpl implements EContractService {
 
             System.out.println("House is found " + house);
 
-            return CreateDocument(actorId, userId, req, house);
+            return createDocument(actorId, primaryTenantUserId, req, house);
         } catch (Exception ex) {
             log.error("CreateDraftVnptEContract failed", ex);
             throw new IllegalStateException("CreateDraftVnptEContract failed");
         }
+    }
+
+    private void createVnptUser(String token, UUID primaryTenantUserId, CreateEContractRequest req) {
+
+        VnptUserUpsert vnptUser = getVnptUserUpsert(primaryTenantUserId, req);
+
+        VnptResult<List<VnptUserDto>> userResult = econtractClient.CreateOrUpdateUser(token, vnptUser);
+        if (userResult == null || userResult.getData() == null) {
+            String errorMsg = (userResult != null) ? userResult.getMessage() : "Unknown error";
+            log.error("Failed to create user on VNPT: {}", errorMsg);
+            throw new IllegalStateException("Failed to create user on VNPT: " + errorMsg);
+        }
+
+    }
+
+    private @NonNull VnptUserUpsert getVnptUserUpsert(UUID primaryTenantUserId, CreateEContractRequest req) {
+
+        // tam thoi set cung
+        List<UUID> roleIds = new ArrayList<UUID>(
+                List.of(UUID.fromString("0aa2afc9-39c5-4652-baec-08ddc28cdda2"))
+        );
+
+        // tam thoi set cung
+        List<Integer> departmentIds = new ArrayList<>(
+                List.of(3110)
+        );
+
+        return new VnptUserUpsert(
+                primaryTenantUserId.toString(),
+                req.email(),
+                req.name(),
+                req.email(),
+                req.phoneNumber(),
+                1,
+                0,
+                2,
+                true,
+                true,
+                1,
+                -1,
+                departmentIds,
+                roleIds
+        );
     }
 
     @Override
@@ -143,7 +183,16 @@ public class EContractServiceImpl implements EContractService {
     @Cacheable(value = "allEContracts")
     public List<EContractDto> getAllEContracts() {
         try {
+            Object springKey = org.springframework.cache.interceptor.SimpleKey.EMPTY;
+
+            Cache cache = cacheManager.getCache("allEContracts");
+            boolean hit = cache != null && cache.get(springKey) != null;
+            log.info("allEContracts cache_hit={}", hit);
+
+            long t0 = System.nanoTime();
             List<EContract> econtracts = eContractRepository.findAll();
+            long dbMs = (System.nanoTime() - t0) / 1_000_000;
+            log.info("db_findAll_ms={}", dbMs);
 
             return eContractMapper.contractsToDtoList(econtracts);
         } catch (Exception ex) {
@@ -171,7 +220,7 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
-    public VnptResult<VnptDocumentDto> confirmAndSendToTenant(UUID contractId) {
+    public VnptDocumentDto confirmAndSendToTenant(UUID contractId) {
         try {
             EContract eContract = eContractRepository.findById(contractId)
                     .orElseThrow(() -> new IllegalStateException("Contract with id " + contractId + " not found"));
@@ -184,39 +233,18 @@ public class EContractServiceImpl implements EContractService {
 
             String tokenAuth = magicLinkTokenService.create(eContract.getId(), eContract.getUserId());
             String url = publicBaseUrl + "/econtract/view/" + eContract.getId() + "?token=" + tokenAuth;
-            ConfirmAndSendToTenantEvent event = ConfirmAndSendToTenantEvent.builder()
-                    .url(url)
-                    .tenantId(eContract.getUserId())
-                    .build();
+            ConfirmAndSendToTenantEvent event = new ConfirmAndSendToTenantEvent(
+                    url,
+                    eContract.getUserId()
+            );
 
             eContractRepository.save(eContract);
 
+            VnptDocumentDto documentDto = readyEContract(eContract);
+
             kafkaTemplate.send("confirmAndSendToTenant-topic", event);
 
-            byte[] pdfBytes = renderHtmlToPdf(eContract.getHtml());
-
-//            Map<String, AnchorBoxVnpt> anchors = findAnchors(pdfBytes, List.of("SIGN_A", "SIGN_B"));
-//            VnptPosition positionA = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 0, 20, 60);
-//            VnptPosition positionB = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 0, 20, 60);
-
-            String No = "EC_" + Instant.now().getEpochSecond() + "_" + eContract.getUserId();
-            if (No.length() > 40) {
-                No = No.substring(0, 40);
-            }
-
-            FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No);
-            CreateDocumentDto createDocumentDto = new CreateDocumentDto(fileInfoDto, "Rental EContract", "Rental EContract", 3059, 3110, No);
-
-            String token = econtractClient.getToken();
-            VnptResult<VnptDocumentDto> result = econtractClient.createDocument(token, createDocumentDto);
-
-            if (result == null || result.getData() == null) {
-                String errorMsg = (result != null) ? result.getMessage() : "Unknown error";
-                log.error("Failed to create document on VNPT: {}", errorMsg);
-                throw new IllegalStateException("Failed to create document on VNPT: " + errorMsg);
-            }
-
-            return result;
+            return documentDto;
         } catch (Exception ex) {
             log.error("confirmAndSendToTenant failed", ex);
             throw new IllegalStateException("confirmAndSendToTenant failed");
@@ -243,6 +271,112 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
+    private VnptDocumentDto readyEContract(EContract eContract) {
+        try {
+
+            byte[] pdfBytes = renderHtmlToPdf(eContract.getHtml());
+
+            Map<String, AnchorBoxVnpt> anchors = findAnchors(pdfBytes, List.of("SIGN_A", "SIGN_B"));
+            VnptPosition positionA = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 35, 20, 60);
+            VnptPosition positionB = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 35, 20, 60);
+
+            String No = "EC_" + Instant.now().getEpochSecond();
+
+            FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No + ".pdf");
+            CreateDocumentDto createDocumentDto = new CreateDocumentDto(fileInfoDto, "Rental EContract", "Rental EContract", 3059, 3110, No);
+
+            String tokenVnpt = econtractClient.getToken();
+            VnptResult<VnptDocumentDto> result = econtractClient.createDocument(tokenVnpt, createDocumentDto);
+
+            if (result == null || result.getData() == null) {
+                String errorMsg = (result != null) ? result.getMessage() : "Unknown error";
+                log.error("Failed to create document on VNPT: {}", errorMsg);
+                throw new IllegalStateException("Failed to create document on VNPT: " + errorMsg);
+            }
+
+            String documentId = result.getData().id();
+            eContract.setDocumentId(documentId);
+            eContractRepository.save(eContract);
+            //            result.getData().withSignMeta(positionA.pos(), positionB.pos());
+            String vnptToken = vnptEContractClient.getToken();
+            String userCodeFirst = eContract.getUserId().toString();
+
+            updateProcess(vnptToken, documentId, userCodeFirst, "hoangtuzami", positionA.pos(), positionB.pos(), positionA.pageSign());
+
+
+            return econtractClient.sendProcess(vnptToken, documentId).getData();
+
+        } catch (Exception ex) {
+            log.error("readyEContract failed", ex);
+            throw new IllegalStateException("readyEContract failed");
+        }
+    }
+
+    @Override
+    public EContractDto getEContractOutSystem(GetEContractOutSystemRequest req) {
+        try {
+            var payload = magicLinkTokenService.verify(req.token())
+                    .orElseThrow(() -> new IllegalStateException("Invalid/expired magic link token"));
+
+            UUID eContractId = UUID.fromString(req.eContractId());
+            if (!payload.contractId().equals(eContractId)) {
+                throw new IllegalStateException("Token is not for this contract");
+            }
+
+            EContract eContract = eContractRepository.findById(eContractId)
+                    .orElseThrow(() -> new IllegalStateException("EContract not found"));
+
+            return eContractMapper.contractToDto(eContract);
+        } catch (Exception ex) {
+            log.error("getEContractByDocumentId failed", ex);
+            throw new IllegalStateException("getEContractByDocumentId failed");
+        }
+    }
+
+    @Override
+    public ProcessResponse signProcess(VnptProcessDto process) {
+        try {
+            var processResponse = vnptEContractClient.signProcess(process);
+
+            if (processResponse.getData() == null) {
+                throw new IllegalStateException("Failed to sign process on VNPT");
+            }
+
+            return processResponse.getData();
+
+        } catch (Exception ex) {
+            log.error("signProcess failed", ex);
+            throw new IllegalStateException("signProcess failed");
+        }
+    }
+
+    private void updateProcess(String token, String documentId, String userCodeFirst, String userCodeSecond, String positionA, String positionB, int pageSign) {
+
+        List<ProcessesRequestDTO> processes = List.of(
+                new ProcessesRequestDTO(
+                        1,
+                        userCodeFirst,
+                        "E",
+                        positionA,
+                        pageSign
+                ),
+                new ProcessesRequestDTO(
+                        2,
+                        userCodeSecond,
+                        "E",
+                        positionB,
+                        pageSign
+                )
+        );
+        var request = new VnptUpdateProcessDTO(
+                documentId,
+                true,
+                processes
+        );
+
+        econtractClient.UpdateProcess(token, request);
+    }
+
     private void getEContractByMagicToken(UUID contractId, String token) {
         var payloadOpt = magicLinkTokenService.verify(token);
         if (payloadOpt.isEmpty())
@@ -253,7 +387,7 @@ public class EContractServiceImpl implements EContractService {
             throw new IllegalStateException("Contract not found");
     }
 
-    private EContractDto CreateDocument(UUID actorId, UUID tenantId, CreateEContractRequest req, HouseResponse house) {
+    private EContractDto createDocument(UUID actorId, UUID primaryTenantUserId, CreateEContractRequest req, HouseResponse house) {
 
         String templateCode = "LEASE_HOUSE";
         EContractTemplate template = templateRepository.findByCode(templateCode)
@@ -327,42 +461,20 @@ public class EContractServiceImpl implements EContractService {
 
         String html = placeholderEngine(template.getContentHtml(), data);
 
-//        byte[] pdfBytes = renderHtmlToPdf(html);
-//
-//        Map<String, AnchorBoxVnpt> anchors = findAnchors(pdfBytes, List.of("SIGN_A", "SIGN_B"));
-//        VnptPosition positionA = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 0, 20, 60);
-//        VnptPosition positionB = getVnptEContractPosition(pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 0, 20, 60);
-
-//        String No = "EC_" + Instant.now().getEpochSecond() + "_" + req.identityNumber();
-//        if (No.length() > 40) {
-//            No = No.substring(0, 40);
-//        }
-//        FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No + ".pdf");
-//        CreateDocumentDto createDocumentDto = new CreateDocumentDto(fileInfoDto, "Rental EContract", "Rental EContract", 3059, 3110, No);
-
-//        String token = econtractClient.getToken();
-//        VnptResult<VnptDocumentDto> result = econtractClient.createDocument(token, createDocumentDto);
-
-//        if (result == null || result.getData() == null) {
-//            String errorMsg = (result != null) ? result.getMessage() : "Unknown error";
-//            log.error("Failed to create document on VNPT: {}", errorMsg);
-//            throw new IllegalStateException("Failed to create document on VNPT: " + errorMsg);
-//        }
-
         String contractName = "EContract_" + req.name() + "_" + Instant.now().getEpochSecond();
         EContract econtract = EContract.builder()
-                .userId(tenantId)
+                .userId(primaryTenantUserId)
+                .houseId(req.houseId())
+                .startAt(req.startDate())
+                .endAt(req.endDate())
                 .name(contractName)
                 .html(html)
                 .status(EContractStatus.DRAFT)
                 .createdBy(actorId)
-                .createdAt(Instant.now())
                 .build();
 
         eContractRepository.save(econtract);
 
-//        result.getData().withSignMeta(positionA.pos(), positionB.pos());
-//        return result.getData();
         return eContractMapper.contractToDto(econtract);
     }
 
@@ -386,27 +498,27 @@ public class EContractServiceImpl implements EContractService {
         return sb.toString();
     }
 
-//    private String escapeXml(String input) {
-//        if (input == null) return "";
-//        StringBuilder sb = new StringBuilder();
-//        for (int i = 0; i < input.length(); i++) {
-//            char c = input.charAt(i);
-//            switch (c) {
-//                case '<': sb.append("&lt;"); break;
-//                case '>': sb.append("&gt;"); break;
-//                case '&': sb.append("&amp;"); break;
-//                case '"': sb.append("&quot;"); break;
-//                case '\'': sb.append("&apos;"); break;
-//                default:
-//                    if (c > 0x7F) {
-//                        sb.append("&#").append((int) c).append(";");
-//                    } else {
-//                        sb.append(c);
-//                    }
-//            }
-//        }
-//        return sb.toString();
-//    }
+    //    private String escapeXml(String input) {
+    //        if (input == null) return "";
+    //        StringBuilder sb = new StringBuilder();
+    //        for (int i = 0; i < input.length(); i++) {
+    //            char c = input.charAt(i);
+    //            switch (c) {
+    //                case '<': sb.append("&lt;"); break;
+    //                case '>': sb.append("&gt;"); break;
+    //                case '&': sb.append("&amp;"); break;
+    //                case '"': sb.append("&quot;"); break;
+    //                case '\'': sb.append("&apos;"); break;
+    //                default:
+    //                    if (c > 0x7F) {
+    //                        sb.append("&#").append((int) c).append(";");
+    //                    } else {
+    //                        sb.append(c);
+    //                    }
+    //            }
+    //        }
+    //        return sb.toString();
+    //    }
 
     private String createTableInDocumentVN(UUID houseId) {
 
@@ -451,6 +563,8 @@ public class EContractServiceImpl implements EContractService {
 
             String baseUri = Objects.requireNonNull(getClass().getResource("/")).toExternalForm();
 
+            String xhtml = toXhtml(html, baseUri);
+
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.usePdfAConformance(PdfRendererBuilder.PdfAConformance.PDFA_1_A);
 
@@ -466,7 +580,7 @@ public class EContractServiceImpl implements EContractService {
             builder.useFont(() -> cp("fonts/SVN-Times New Roman 2 bold italic.ttf"),
                     "Times New Roman", 700, BaseRendererBuilder.FontStyle.ITALIC, true);
 
-            builder.withHtmlContent(html, baseUri);
+            builder.withHtmlContent(xhtml, baseUri);
             builder.toStream(out);
             builder.run();
 
@@ -474,6 +588,27 @@ public class EContractServiceImpl implements EContractService {
         } catch (Exception e) {
             throw new IllegalStateException("Render PDF failed", e);
         }
+    }
+
+    private String toXhtml(String html, String baseUri) {
+        if (html == null) html = "";
+
+        Document doc = Jsoup.parse(html, baseUri);
+
+        if (doc.head().selectFirst("meta[charset]") == null) {
+            doc.head().prependElement("meta").attr("charset", "UTF-8");
+        }
+
+        if (doc.head().selectFirst("base[href]") == null) {
+            doc.head().prependElement("base").attr("href", baseUri);
+        }
+
+        doc.outputSettings()
+                .charset("UTF-8")
+                .syntax(Document.OutputSettings.Syntax.xml)
+                .escapeMode(Entities.EscapeMode.xhtml);
+
+        return doc.html();
     }
 
     private InputStream cp(String path) {

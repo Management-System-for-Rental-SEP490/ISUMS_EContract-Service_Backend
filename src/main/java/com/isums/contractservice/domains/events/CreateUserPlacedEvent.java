@@ -21,4 +21,5 @@ public class CreateUserPlacedEvent {
     private String email;
     private String phoneNumber;
     private String identityNumber;
+    private Boolean isEnabled;
 }

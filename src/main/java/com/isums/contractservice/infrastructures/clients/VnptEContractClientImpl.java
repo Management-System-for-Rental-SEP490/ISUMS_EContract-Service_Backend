@@ -185,7 +185,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
                     .headers(h -> bearer(h, token))
-                    .body(users)
+                    .body(List.of(users))
                     .retrieve()
                     .body(String.class);
 
@@ -215,7 +215,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         ProcessCodeLoginRequest payload = new ProcessCodeLoginRequest(processCode);
 
         String body = vnptRestClient.post()
-                .uri(uri, processCode)
+                .uri(uri)
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept(MediaType.APPLICATION_JSON)
                 .body(payload)
@@ -226,13 +226,119 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             return VnptResult.error("VNPT response is null");
         }
         try {
-            ProcessLoginInfoDto dto = mapper.readValue(body, ProcessLoginInfoDto.class);
+            ProcessLoginInfoDto dto = parseProcessLogin(body);
             return VnptResult.success(dto);
 
         } catch (Exception e) {
             return VnptResult.error("Cannot parse VNPT response: "
                     + e.getClass().getSimpleName() + ": " + e.getMessage());
         }
+    }
+
+    @Override
+    public VnptResult<VnptDocumentDto> UpdateProcess(String token, VnptUpdateProcessDTO update) {
+        final String uri = "/api/documents/update-process";
+
+        return safeCall(HttpMethod.POST, uri, () -> {
+            if (token == null || token.isBlank()) {
+                return VnptResult.error("Missing token");
+            }
+
+            if (update == null) {
+                return VnptResult.error("Missing update payload");
+            }
+
+            String raw = vnptRestClient.post()
+                    .uri(uri)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .headers(h -> bearer(h, token))
+                    .body(update)
+                    .retrieve()
+                    .body(String.class);
+
+            if (raw == null || raw.isBlank()) {
+                return VnptResult.error("VNPT returned empty body");
+            }
+
+            int max = 4000;
+            String clipped = raw.length() > max ? raw.substring(0, max) + "..." : raw;
+
+            try {
+                return mapper.readValue(raw, new TypeReference<VnptResult<VnptDocumentDto>>() {
+                });
+            } catch (Exception e) {
+                return VnptResult.error("Cannot parse VNPT response: " + e.getClass().getSimpleName() + ": " + e.getMessage()
+                        + "\nRAW=" + clipped);
+            }
+        });
+    }
+
+    public VnptResult<VnptDocumentDto> sendProcess(String token, String documentId) {
+        final String uri = "/api/documents/send-process/{documentId}";
+        return safeCall(HttpMethod.POST, uri, () -> {
+            if (token == null || token.isBlank()) {
+                return VnptResult.error("Missing token");
+            }
+
+            if (documentId == null || documentId.isBlank()) {
+                return VnptResult.error("Missing documentId");
+            }
+
+            String raw = vnptRestClient.post()
+                    .uri(uri, documentId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .headers(h -> bearer(h, token))
+                    .retrieve()
+                    .body(String.class);
+
+            if (raw == null || raw.isBlank()) {
+                return VnptResult.error("VNPT returned empty body");
+            }
+
+            int max = 4000;
+            String clipped = raw.length() > max ? raw.substring(0, max) + "..." : raw;
+            try {
+                return VnptResult.success(mapper.readValue(raw, VnptDocumentDto.class));
+            } catch (Exception e) {
+                return VnptResult.error("Cannot parse VNPT response: " + e.getClass().getSimpleName() + ": " + e.getMessage()
+                        + "\nRAW=" + clipped);
+            }
+        });
+    }
+
+    @Override
+    public VnptResult<ProcessResponse> signProcess(VnptProcessDto process) {
+        final String uri = "/api/documents/process";
+        return safeCall(HttpMethod.POST, uri, () -> {
+
+            if (process == null) {
+                return VnptResult.error("Missing process");
+            }
+
+            String raw = vnptRestClient.post()
+                    .uri(uri)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .headers(h -> bearer(h, process.token()))
+                    .body(process)
+                    .retrieve()
+                    .body(String.class);
+
+            if (raw == null || raw.isBlank()) {
+                return VnptResult.error("VNPT returned empty body");
+            }
+
+            int max = 4000;
+            String clipped = raw.length() > max ? raw.substring(0, max) + "..." : raw;
+            try {
+                return VnptResult.success(mapper.readValue(raw, ProcessResponse.class));
+            } catch (Exception e) {
+                return VnptResult.error("Cannot parse VNPT response: " + e.getClass().getSimpleName() + ": " + e.getMessage()
+                        + "\nRAW=" + clipped);
+            }
+        });
     }
 
     private ProcessLoginInfoDto parseProcessLogin(String body) {
@@ -253,12 +359,11 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             if (tokenNode != null && !tokenNode.isNull()) {
                 if (tokenNode.isString()) {
                     accessToken = tokenNode.asString();
-//                } else if (tokenNode.isObject()) {
-//                    JsonNode at = tokenNode.get("accessToken");
-//                    if (at != null && at.isString()) {
-//                        accessToken = at.asString();
-//                    }
-//                }
+                } else if (tokenNode.isObject()) {
+                    JsonNode at = tokenNode.get("accessToken");
+                    if (at != null && at.isString()) {
+                        accessToken = at.asString();
+                    }
                 }
             }
 

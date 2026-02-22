@@ -7,11 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.util.UUID;
 
-@Data
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class ConfirmAndSendToTenantEvent {
-    private String url;
-    private UUID tenantId;
-}
+public record ConfirmAndSendToTenantEvent(
+        String url,
+        UUID recipientUserId
+) {}

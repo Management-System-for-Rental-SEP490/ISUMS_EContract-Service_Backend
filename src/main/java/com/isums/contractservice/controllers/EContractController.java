@@ -3,7 +3,6 @@ package com.isums.contractservice.controllers;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
-import com.isums.contractservice.infrastructures.clients.VnptEContractClientImpl;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -14,7 +13,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping
+@RequestMapping("/api/econtracts")
 @RequiredArgsConstructor
 public class EContractController {
     private final EContractService contractService;
@@ -23,7 +22,7 @@ public class EContractController {
     @PostMapping
     public ApiResponse<EContractDto> createDocument(@AuthenticationPrincipal Jwt jwt, @RequestBody CreateEContractRequest req) {
         UUID actorId = extractActorId(jwt);
-        EContractDto res = contractService.CreateDraftEContract(actorId, req);
+        EContractDto res = contractService.createDraftEContract(actorId, req);
         return ApiResponses.created(res, "Success to create e-contract");
     }
 
@@ -75,5 +74,23 @@ public class EContractController {
     public ApiResponse<ProcessLoginInfoDto> processCode(@RequestBody ProcessCodeLoginRequest req) {
         ProcessLoginInfoDto res = contractService.getAccessInfoByProcessCode(req);
         return ApiResponses.ok(res, "Success to get access info from VNPT");
+    }
+
+//    @PostMapping("/ready")
+//    public ApiResponse<VnptDocumentDto> readyEContract(@RequestBody ReadyEContractRequest req) {
+//        VnptDocumentDto res = contractService.readyEContract(req);
+//        return ApiResponses.ok(res, "Success to ready e-contract");
+//    }
+
+    @PostMapping("/outsystem")
+    public ApiResponse<EContractDto> getEContractByDocumentId(@RequestBody GetEContractOutSystemRequest req) {
+        EContractDto res = contractService.getEContractOutSystem(req);
+        return ApiResponses.ok(res, "Success to get e-contract outsystem");
+    }
+
+    @PostMapping("/sign")
+    public ApiResponse<ProcessResponse> signEContract(@RequestBody VnptProcessDto req) {
+        ProcessResponse res = contractService.signProcess(req);
+        return ApiResponses.ok(res, "Success to sign e-contract");
     }
 }
