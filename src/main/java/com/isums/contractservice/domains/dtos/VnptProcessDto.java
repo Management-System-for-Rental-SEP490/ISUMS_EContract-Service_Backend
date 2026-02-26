@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record VnptProcessDto(
+        String processCode,
         String token,
         String processId,
         String reason,

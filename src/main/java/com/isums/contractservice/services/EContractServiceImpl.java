@@ -38,9 +38,12 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.*;
 import java.time.Instant;
@@ -65,6 +68,7 @@ public class EContractServiceImpl implements EContractService {
     private final VnptEContractClient vnptEContractClient;
     private final CacheManager cacheManager;
     private final UserGrpcClient userGrpcClient;
+    private final ObjectMapper mapper;
 
     @Value("${app.public-base-url}")
     private String publicBaseUrl;
@@ -207,8 +211,12 @@ public class EContractServiceImpl implements EContractService {
             EContract econtract = eContractRepository.findById(id)
                     .orElseThrow(() -> new IllegalStateException("Contract with id " + id + " not found"));
 
-            eContractMapper.patch(req, econtract);
-            eContractRepository.save(econtract);
+            if (econtract.getStatus() == EContractStatus.DRAFT || econtract.getStatus() == EContractStatus.READY) {
+                eContractMapper.patch(req, econtract);
+                eContractRepository.save(econtract);
+            } else {
+                throw new IllegalStateException("Cannot update contract in status: " + econtract.getStatus());
+            }
 
             return eContractMapper.contractToDto(econtract);
 
@@ -219,26 +227,13 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
+    @CacheEvict(allEntries = true, value = "allEContracts")
     public VnptDocumentDto confirmEContract(UUID contractId) {
         try {
             EContract eContract = eContractRepository.findById(contractId)
                     .orElseThrow(() -> new IllegalStateException("Contract with id " + contractId + " not found"));
 
-            if (eContract.getStatus() != EContractStatus.DRAFT) {
-                throw new IllegalStateException("Cannot confirm contract in status: " + eContract.getStatus());
-            }
-
-            eContract.setStatus(EContractStatus.CONFIRM);
-
-//            String url = publicBaseUrl + "/econtract/view/" + eContract. + "?token=" + tokenAuth;
-//            ConfirmAndSendToTenantEvent event = new ConfirmAndSendToTenantEvent(
-//                    url,
-//                    eContract.getUserId()
-//            );
-
             eContractRepository.save(eContract);
-
-            //            kafkaTemplate.send("confirmAndSendToTenant-topic", event);
 
             return readyEContract(eContract);
         } catch (Exception ex) {
@@ -250,15 +245,20 @@ public class EContractServiceImpl implements EContractService {
     @Override
     public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode) {
         try {
-            ProcessLoginInfoDto info = vnptEContractClient.getAccessInfoByProcessCode(processCode).getData();
-            if (info == null) {
-                throw new IllegalStateException("Failed to get access info from VNPT");
-            }
 
-            return info;
+            String body = vnptEContractClient.getAccessInfoByProcessCode(processCode);
+
+            var processLogin = parseProcessLogin(body);
+            EContract eContract = eContractRepository.findByDocumentId(processLogin.documentId())
+                    .orElseThrow(() -> new IllegalStateException("EContract not found"));
+
+            eContract.setStatus(EContractStatus.CONFIRM);
+            eContractRepository.save(eContract);
+
+            return processLogin;
         } catch (Exception ex) {
             log.error("getAccessInfoByProcessCode failed", ex);
-            throw new IllegalStateException("getAccessInfoByProcessCode failed");
+            throw new IllegalStateException("getAccessInfoByProcessCode failed", ex);
         }
     }
 
@@ -286,7 +286,14 @@ public class EContractServiceImpl implements EContractService {
             }
 
             String documentId = result.getData().id();
+
+            if (eContract.getStatus() != EContractStatus.DRAFT) {
+                throw new IllegalStateException("Cannot ready contract in status: " + eContract.getStatus());
+            }
+
+            eContract.setStatus(EContractStatus.READY);
             eContract.setDocumentId(documentId);
+            eContract.setDocumentNo(result.getData().no());
             eContractRepository.save(eContract);
             //            result.getData().withSignMeta(positionA.pos(), positionB.pos());
             String vnptToken = vnptEContractClient.getToken();
@@ -309,7 +316,7 @@ public class EContractServiceImpl implements EContractService {
 
             var vnptDocument = getAccessInfoByProcessCode(processCode);
 
-            EContract eContract = eContractRepository.findByDocumentNo(processCode)
+            EContract eContract = eContractRepository.findByDocumentNo(vnptDocument.documentNo())
                     .orElseThrow(() -> new IllegalStateException("EContract not found"));
 
             return eContractMapper.contractToDto(eContract);
@@ -320,12 +327,34 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
+    @Caching(evict = {
+            @CacheEvict(cacheNames = "allEContracts", allEntries = true),
+            @CacheEvict(cacheNames = "vnptProcessCode", key = "#process.processCode", allEntries = true)
+    })
     public ProcessResponse signProcess(VnptProcessDto process) {
         try {
             var processResponse = vnptEContractClient.signProcess(process);
 
+            log.info("VNPT signProcess: success={} message={} dataNull={}",
+                    processResponse == null ? null : processResponse.getSuccess(),
+                    processResponse == null ? null : processResponse.getMessage(),
+                    processResponse == null || processResponse.getData() == null);
+
+            if (processResponse == null) {
+                throw new IllegalStateException("VNPT signProcess returned null");
+            }
+
             if (processResponse.getData() == null) {
-                throw new IllegalStateException("Failed to sign process on VNPT");
+                log.error("VNPT signProcess failed payload={}", processResponse);
+                throw new IllegalStateException("VNPT signProcess failed: " + processResponse.getMessage());
+            }
+
+            if (processResponse.getSuccess() && processResponse.getData().id() != null) {
+                log.info("VNPT signProcess success: data={}", processResponse.getData());
+                var eContract = eContractRepository.findByDocumentId(String.valueOf(processResponse.getData().id()))
+                        .orElseThrow(() -> new IllegalStateException("EContract not found for documentId: " + processResponse.getData().id()));
+                eContract.setStatus(EContractStatus.IN_PROGRESS);
+                eContractRepository.save(eContract);
             }
 
             return processResponse.getData();
@@ -437,7 +466,7 @@ public class EContractServiceImpl implements EContractService {
 
         String html = placeholderEngine(template.getContentHtml(), data);
 
-        String contractName = "EContract_" + req.name() + "_" + Instant.now().getEpochSecond();
+        String contractName = "EContract_" + req.name().trim() + "_" + Instant.now().getEpochSecond();
         EContract econtract = EContract.builder()
                 .userId(primaryTenantUserId)
                 .houseId(req.houseId())
@@ -787,5 +816,87 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
+    private ProcessLoginInfoDto parseProcessLogin(String body) {
+        try {
+            JsonNode root = mapper.readTree(body);
+            JsonNode data = root.get("data");
+            JsonNode dataEl;
+            if (data != null && data.isObject()) {
+                dataEl = data;
+            } else if (root.has("token") && root.has("document")) {
+                dataEl = root;
+            } else {
+                throw new IllegalStateException("Unexpected response format: " + body);
+            }
 
+            String accessToken = null;
+            JsonNode tokenNode = dataEl.get("token");
+            if (tokenNode != null && !tokenNode.isNull()) {
+                if (tokenNode.isString()) {
+                    accessToken = tokenNode.asString();
+                } else if (tokenNode.isObject()) {
+                    JsonNode at = tokenNode.get("accessToken");
+                    if (at != null && at.isString()) {
+                        accessToken = at.asString();
+                    }
+                }
+            }
+
+            JsonNode document = dataEl.get("document");
+            if (document == null || document.isNull() || !document.isObject()) {
+                throw new IllegalStateException("Missing document: " + body);
+            }
+
+            String waitingProcessId = null;
+            Integer processedByUserId = null;
+            String documentNo = null;
+            String documentId = null;
+            String position = null;
+            Integer pageSign = null;
+            boolean isOtp = false;
+
+            JsonNode downId = document.get("id");
+            if (downId != null && downId.isString()) documentId = downId.asString();
+
+            JsonNode no = document.get("no");
+            if (no != null && no.isString()) documentNo = no.asString();
+
+            JsonNode waiting = document.get("waitingProcess");
+            if (waiting != null && waiting.isObject()) {
+                JsonNode id = waiting.get("id");
+                if (id != null && id.isString()) waitingProcessId = id.asString();
+
+                JsonNode processed = waiting.get("processedByUserId");
+                if (processed != null && processed.canConvertToInt()) processedByUserId = processed.asInt();
+
+                JsonNode pos = waiting.get("position");
+                if (pos != null && pos.isString()) position = pos.asString();
+
+                JsonNode ps = waiting.get("pageSign");
+                if (ps != null && ps.canConvertToInt()) pageSign = ps.asInt();
+
+                JsonNode accessPermission = waiting.get("accessPermission");
+                if (accessPermission != null && accessPermission.isObject()) {
+                    JsonNode value = accessPermission.get("value");
+                    if (value != null && value.canConvertToInt()) {
+                        isOtp = (value.asInt() == 7);
+                    }
+                }
+            }
+
+            return new ProcessLoginInfoDto(
+                    waitingProcessId,
+                    documentId,
+                    documentNo,
+                    processedByUserId,
+                    accessToken,
+                    position,
+                    pageSign,
+                    isOtp
+            );
+
+        } catch (Exception e) {
+            throw new IllegalStateException("Cannot parse response: " + e.getMessage() + "\nRAW=" + body, e);
+        }
+    }
 }
