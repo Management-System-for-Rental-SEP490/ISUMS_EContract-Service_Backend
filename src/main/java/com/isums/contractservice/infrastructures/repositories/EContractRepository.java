@@ -7,7 +7,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface EContractRepository extends JpaRepository<EContract, UUID> {
-    Optional<EContract> findByDocumentId(String documentId);
 
+    Optional<EContract> findByDocumentId(String documentId);
     Optional<EContract> findByDocumentNo(String documentNo);
 }

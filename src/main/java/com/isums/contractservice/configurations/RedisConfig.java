@@ -30,6 +30,7 @@ public class RedisConfig {
                 .cacheDefaults(base.entryTtl(Duration.ofMinutes(5)))
                 .withCacheConfiguration("vnptToken", base.entryTtl(Duration.ofHours(23).plusMinutes(30)))
                 .withCacheConfiguration("allEContracts", base.entryTtl(Duration.ofHours(23).plusMinutes(30)))
+                .withCacheConfiguration("vnptProcessCode", base.entryTtl(Duration.ofMinutes(15)))
                 .build();
     }
 }

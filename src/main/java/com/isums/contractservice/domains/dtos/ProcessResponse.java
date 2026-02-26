@@ -2,6 +2,8 @@ package com.isums.contractservice.domains.dtos;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.isums.contractservice.configurations.VnptInstantDeserializer;
+import tools.jackson.databind.annotation.JsonDeserialize;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -9,8 +11,12 @@ import java.util.UUID;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ProcessResponse(
         @JsonProperty("id") UUID id,
+
+        @JsonDeserialize(using = VnptInstantDeserializer.class)
         @JsonProperty("createdDate") Instant createdDate,
+        @JsonDeserialize(using = VnptInstantDeserializer.class)
         @JsonProperty("lastModifiedDate") Instant lastModifiedDate,
+        @JsonDeserialize(using = VnptInstantDeserializer.class)
         @JsonProperty("completedDate") Instant completedDate,
 
         @JsonProperty("no") String no,
@@ -19,13 +25,14 @@ public record ProcessResponse(
         @JsonProperty("description") String description,
 
         @JsonProperty("waitingProcess") WaitingProcessDto waitingProcess,
-        @JsonProperty("processInOrder") boolean processInOrder,
+        @JsonProperty("processInOrder") Boolean processInOrder,
 
         @JsonProperty("type") DocumentType type,
         @JsonProperty("file") FileInfo file,
 
         @JsonProperty("downloadUrl") String downloadUrl,
 
+        @JsonProperty("documentId") String documentId,
         @JsonProperty("receiveOtpMethod") Integer receiveOtpMethod,
         @JsonProperty("receiveOtpPhone") String receiveOtpPhone,
         @JsonProperty("receiveOtpEmail") String receiveOtpEmail,
@@ -42,6 +49,7 @@ public record ProcessResponse(
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record WaitingProcessDto(
             @JsonProperty("id") UUID id,
+            @JsonDeserialize(using = VnptInstantDeserializer.class)
             @JsonProperty("createdDate") Instant createdDate,
             @JsonProperty("isOrder") boolean isOrder,
             @JsonProperty("orderNo") int orderNo,

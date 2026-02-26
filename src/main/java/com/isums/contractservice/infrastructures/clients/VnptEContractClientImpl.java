@@ -4,6 +4,7 @@ import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import com.isums.contractservice.configurations.VnptEcontractProperties;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
@@ -29,6 +30,7 @@ import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class VnptEContractClientImpl implements VnptEContractClient {
 
     private final RestClient vnptRestClient;
@@ -208,30 +210,28 @@ public class VnptEContractClientImpl implements VnptEContractClient {
 
     @Override
     @Cacheable(value = "vnptProcessCode", key = "#processCode")
-    public VnptResult<ProcessLoginInfoDto> getAccessInfoByProcessCode(String processCode) {
-
-        String uri = "/api/auth/process-code-login";
-
-        ProcessCodeLoginRequest payload = new ProcessCodeLoginRequest(processCode);
-
-        String body = vnptRestClient.post()
-                .uri(uri)
-                .contentType(MediaType.APPLICATION_JSON)
-                .accept(MediaType.APPLICATION_JSON)
-                .body(payload)
-                .retrieve()
-                .body(String.class);
-
-        if (body == null || body.isBlank()) {
-            return VnptResult.error("VNPT response is null");
-        }
+    public String getAccessInfoByProcessCode(String processCode) {
         try {
-            ProcessLoginInfoDto dto = parseProcessLogin(body);
-            return VnptResult.success(dto);
+            String uri = "/api/auth/process-code-login";
+
+            ProcessCodeLoginRequest payload = new ProcessCodeLoginRequest(processCode);
+
+            String body = vnptRestClient.post()
+                    .uri(uri)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .body(payload)
+                    .retrieve()
+                    .body(String.class);
+
+            if (body == null || body.isBlank()) {
+                throw new IllegalStateException("Empty response body process-code-login");
+            }
+
+            return body;
 
         } catch (Exception e) {
-            return VnptResult.error("Cannot parse VNPT response: "
-                    + e.getClass().getSimpleName() + ": " + e.getMessage());
+            throw new IllegalStateException("Cannot parse VNPT response: " + e.getClass().getSimpleName() + ": " + e.getMessage());
         }
     }
 
@@ -313,118 +313,33 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         final String uri = "/api/documents/process";
         return safeCall(HttpMethod.POST, uri, () -> {
 
-            if (process == null) {
-                return VnptResult.error("Missing process");
-            }
-
-            String raw = vnptRestClient.post()
+            var entity = vnptRestClient.post()
                     .uri(uri)
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
                     .headers(h -> bearer(h, process.token()))
                     .body(process)
                     .retrieve()
-                    .body(String.class);
+                    .toEntity(String.class);
+
+            var status  = entity.getStatusCode();
+            var headers = entity.getHeaders();
+            var raw     = entity.getBody();
+
+            if (!status.is2xxSuccessful()) {
+                return VnptResult.error("HTTP " + status.value() + " "
+                        + "\n" + HttpMethod.POST + " " + uri
+                        + "\nHeaders=" + headers
+                        + (raw == null ? "" : "\n" + raw));
+            }
 
             if (raw == null || raw.isBlank()) {
-                return VnptResult.error("VNPT returned empty body");
+                return VnptResult.error("VNPT returned empty body (status=" + status.value() + ", headers=" + headers + ")");
             }
 
-            int max = 4000;
-            String clipped = raw.length() > max ? raw.substring(0, max) + "..." : raw;
-            try {
-                return VnptResult.success(mapper.readValue(raw, ProcessResponse.class));
-            } catch (Exception e) {
-                return VnptResult.error("Cannot parse VNPT response: " + e.getClass().getSimpleName() + ": " + e.getMessage()
-                        + "\nRAW=" + clipped);
-            }
+            return mapper.readValue(raw, new TypeReference<VnptResult<ProcessResponse>>() {});
         });
     }
-
-    private ProcessLoginInfoDto parseProcessLogin(String body) {
-        try {
-            JsonNode root = mapper.readTree(body);
-            JsonNode data = root.get("data");
-            JsonNode dataEl;
-            if (data != null && data.isObject()) {
-                dataEl = data;
-            } else if (root.has("token") && root.has("document")) {
-                dataEl = root;
-            } else {
-                throw new IllegalStateException("Unexpected response format: " + body);
-            }
-
-            String accessToken = null;
-            JsonNode tokenNode = dataEl.get("token");
-            if (tokenNode != null && !tokenNode.isNull()) {
-                if (tokenNode.isString()) {
-                    accessToken = tokenNode.asString();
-                } else if (tokenNode.isObject()) {
-                    JsonNode at = tokenNode.get("accessToken");
-                    if (at != null && at.isString()) {
-                        accessToken = at.asString();
-                    }
-                }
-            }
-
-            JsonNode document = dataEl.get("document");
-            if (document == null || document.isNull() || !document.isObject()) {
-                throw new IllegalStateException("Missing document: " + body);
-            }
-
-            String waitingProcessId = null;
-            Integer processedByUserId = null;
-            String documentNo = null;
-            String documentId = null;
-            String position = null;
-            Integer pageSign = null;
-            boolean isOtp = false;
-
-            JsonNode downId = document.get("id");
-            if (downId != null && downId.isString()) documentId = downId.asString();
-
-            JsonNode waiting = document.get("waitingProcess");
-            if (waiting != null && waiting.isObject()) {
-                JsonNode id = waiting.get("id");
-                if (id != null && id.isString()) waitingProcessId = id.asString();
-
-                JsonNode no = waiting.get("no");
-                if (no != null && no.isString()) documentNo = no.asString();
-
-                JsonNode processed = waiting.get("processedByUserId");
-                if (processed != null && processed.canConvertToInt()) processedByUserId = processed.asInt();
-
-                JsonNode pos = waiting.get("position");
-                if (pos != null && pos.isString()) position = pos.asString();
-
-                JsonNode ps = waiting.get("pageSign");
-                if (ps != null && ps.canConvertToInt()) pageSign = ps.asInt();
-
-                JsonNode accessPermission = waiting.get("accessPermission");
-                if (accessPermission != null && accessPermission.isObject()) {
-                    JsonNode value = accessPermission.get("value");
-                    if (value != null && value.canConvertToInt()) {
-                        isOtp = (value.asInt() == 7);
-                    }
-                }
-            }
-
-            return new ProcessLoginInfoDto(
-                    waitingProcessId,
-                    documentId,
-                    documentNo,
-                    processedByUserId,
-                    accessToken,
-                    position,
-                    pageSign,
-                    isOtp
-            );
-
-        } catch (Exception e) {
-            throw new IllegalStateException("Cannot parse response: " + e.getMessage() + "\nRAW=" + body, e);
-        }
-    }
-
 
     private String parseToken(String body) {
         try {
