@@ -93,4 +93,10 @@ public class EContractController {
         ProcessResponse res = contractService.signProcess(req);
         return ApiResponses.ok(res, "Success to sign e-contract");
     }
+
+    @PostMapping("/sign-admin")
+    public ApiResponse<ProcessResponse> signEContractAdmin(@RequestBody VnptProcessDto req) {
+        ProcessResponse res = contractService.signProcessForAdmin(req);
+        return ApiResponses.ok(res, "Success to sign e-contract");
+    }
 }

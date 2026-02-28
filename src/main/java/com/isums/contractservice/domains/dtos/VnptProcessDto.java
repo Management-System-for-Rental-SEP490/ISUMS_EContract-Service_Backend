@@ -19,4 +19,10 @@ public record VnptProcessDto(
         Boolean showReason,
         Boolean confirmTermsConditions
 ) {
+    public VnptProcessDto withToken(String newToken) {
+        return new VnptProcessDto(
+                processCode, newToken, processId, reason, reject, otp, signatureDisplayMode, signatureImage, signingPage, signingPosition,
+                signatureText, fontSize, showReason, confirmTermsConditions
+        );
+    }
 }
