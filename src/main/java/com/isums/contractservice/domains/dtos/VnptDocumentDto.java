@@ -1,18 +1,17 @@
 package com.isums.contractservice.domains.dtos;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.util.List;
 
 public record VnptDocumentDto(
         String id,
-        Instant createdDate,
-        Instant lastModifiedDate,
-        Instant expiryDate,
-        Instant completedDate,
-        Instant validFrom,
-        Instant validTo,
-        Instant documentDate,
+        String createdDate,
+        String lastModifiedDate,
+        String expiryDate,
+        String completedDate,
+        String validFrom,
+        String validTo,
+        String documentDate,
         BigDecimal contractValue,
         String customerCode,
         String customerInformation,

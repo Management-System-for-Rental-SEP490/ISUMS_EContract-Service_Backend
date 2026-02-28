@@ -99,4 +99,10 @@ public class EContractController {
         ProcessResponse res = contractService.signProcessForAdmin(req);
         return ApiResponses.ok(res, "Success to sign e-contract");
     }
+
+    @GetMapping("/vnpt-document/{documentId}")
+    public ApiResponse<VnptDocumentDto> getVnptEContractByDocumentId(@PathVariable String documentId) {
+        VnptDocumentDto res = contractService.getVnptEContractByDocumentId(documentId);
+        return ApiResponses.ok(res, "Success to get e-contract");
+    }
 }

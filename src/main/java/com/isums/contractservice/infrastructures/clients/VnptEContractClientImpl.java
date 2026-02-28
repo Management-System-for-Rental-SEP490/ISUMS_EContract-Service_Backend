@@ -1,5 +1,6 @@
 package com.isums.contractservice.infrastructures.clients;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import com.isums.contractservice.configurations.VnptEcontractProperties;
@@ -18,9 +19,9 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -322,9 +323,9 @@ public class VnptEContractClientImpl implements VnptEContractClient {
                     .retrieve()
                     .toEntity(String.class);
 
-            var status  = entity.getStatusCode();
+            var status = entity.getStatusCode();
             var headers = entity.getHeaders();
-            var raw     = entity.getBody();
+            var raw = entity.getBody();
 
             if (!status.is2xxSuccessful()) {
                 return VnptResult.error("HTTP " + status.value() + " "
@@ -337,7 +338,47 @@ public class VnptEContractClientImpl implements VnptEContractClient {
                 return VnptResult.error("VNPT returned empty body (status=" + status.value() + ", headers=" + headers + ")");
             }
 
-            return mapper.readValue(raw, new TypeReference<VnptResult<ProcessResponse>>() {});
+            try {
+                return mapper.readValue(raw, new TypeReference<VnptResult<ProcessResponse>>() {
+                });
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    @Override
+    public VnptResult<VnptDocumentDto> getEContractById(String documentId, String token) {
+        final String uri = "/api/documents/{id}";
+        return safeCall(HttpMethod.GET, uri, () -> {
+
+            var raw = vnptRestClient.get()
+                    .uri(uri, documentId)
+                    .accept(MediaType.APPLICATION_JSON)
+                    .headers(h -> bearer(h, token))
+                    .retrieve()
+                    .body(String.class);
+
+            if (raw == null || raw.isBlank()) {
+                return VnptResult.error("VNPT returned empty body");
+            }
+
+            try {
+                JsonNode root = mapper.readTree(raw);
+                JsonNode dataNode = root.get("data");
+
+                if (dataNode == null || dataNode.isNull()) {
+                    return VnptResult.error("Missing data field");
+                }
+
+                VnptDocumentDto dto = mapper.treeToValue(dataNode, VnptDocumentDto.class);
+                log.info("Parsed dto id={}", dto.id());
+                return VnptResult.success(dto);
+
+            } catch (Exception e) {
+                log.error("Parse failed: {}", e.getMessage());
+                return VnptResult.error("Cannot parse: " + e.getMessage());
+            }
         });
     }
 
@@ -350,8 +391,8 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             }
 
             String token = null;
-            if (data.isString()) {
-                token = data.asString();
+            if (data.isTextual()) {
+                token = data.asText();
             }
 
             if (token == null && data.isObject()) {
@@ -371,7 +412,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
     }
 
     private static String asString(JsonNode node) {
-        return (node != null && node.isString()) ? node.asString() : null;
+        return (node != null && node.isTextual()) ? node.asText() : null;
     }
 
     private static String requireString(String string, String msg) {

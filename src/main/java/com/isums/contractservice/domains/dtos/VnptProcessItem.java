@@ -1,11 +1,10 @@
 package com.isums.contractservice.domains.dtos;
 
-import java.time.Instant;
 import java.util.UUID;
 
 public record VnptProcessItem(
         UUID id,
-        Instant createdDate,
+        String createdDate,
         int comId,
         boolean isOrder,
         int orderNo,
