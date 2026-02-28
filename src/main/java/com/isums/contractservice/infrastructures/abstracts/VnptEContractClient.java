@@ -20,4 +20,6 @@ public interface VnptEContractClient {
     VnptResult<VnptDocumentDto> sendProcess(String token, String documentId);
 
     VnptResult<ProcessResponse> signProcess(VnptProcessDto process);
+
+    VnptResult<VnptDocumentDto> getEContractById(String documentId, String token);
 }

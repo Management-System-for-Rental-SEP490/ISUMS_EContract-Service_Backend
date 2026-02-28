@@ -1,7 +1,6 @@
 package com.isums.contractservice.services;
 
 import com.isums.assetservice.grpc.AssetItemDto;
-import com.isums.contractservice.domains.events.ConfirmAndSendToTenantEvent;
 import com.isums.contractservice.exceptions.NotFoundException;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
@@ -43,8 +42,8 @@ import org.springframework.cache.annotation.Caching;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.*;
 import java.time.Instant;
@@ -371,11 +370,6 @@ public class EContractServiceImpl implements EContractService {
         VnptProcessDto updatedProcess = process.withToken(vnptEContractClient.getToken());
         var processResponse = vnptEContractClient.signProcess(updatedProcess);
 
-        log.info("VNPT signProcess: success={} message={} dataNull={}",
-                processResponse == null ? null : processResponse.getSuccess(),
-                processResponse == null ? null : processResponse.getMessage(),
-                processResponse == null || processResponse.getData() == null);
-
         if (processResponse == null) {
             throw new IllegalStateException("VNPT signProcess returned null");
         }
@@ -394,6 +388,20 @@ public class EContractServiceImpl implements EContractService {
         }
 
         return processResponse.getData();
+    }
+
+    @Override
+    @Cacheable(value = "vnptDocumentById", key = "#documentId")
+    public VnptDocumentDto getVnptEContractByDocumentId(String documentId) {
+        String token = vnptEContractClient.getToken();
+        var eContract = vnptEContractClient.getEContractById(documentId, token);
+
+        if (eContract.getData().id() == null) {
+            log.error("VNPT get eContract VNPT failed payload={}", eContract);
+            throw new NotFoundException("EContract not found for documentId: " + documentId);
+        }
+
+        return eContract.getData();
     }
 
     private void updateProcess(String token, String documentId, String userCodeFirst, String userCodeSecond, String positionA, String positionB, int pageSign) {
@@ -863,12 +871,12 @@ public class EContractServiceImpl implements EContractService {
             String accessToken = null;
             JsonNode tokenNode = dataEl.get("token");
             if (tokenNode != null && !tokenNode.isNull()) {
-                if (tokenNode.isString()) {
-                    accessToken = tokenNode.asString();
+                if (tokenNode.isTextual()) {
+                    accessToken = tokenNode.asText();
                 } else if (tokenNode.isObject()) {
                     JsonNode at = tokenNode.get("accessToken");
-                    if (at != null && at.isString()) {
-                        accessToken = at.asString();
+                    if (at != null && at.isTextual()) {
+                        accessToken = at.asText();
                     }
                 }
             }
@@ -887,21 +895,21 @@ public class EContractServiceImpl implements EContractService {
             boolean isOtp = false;
 
             JsonNode downId = document.get("id");
-            if (downId != null && downId.isString()) documentId = downId.asString();
+            if (downId != null && downId.isTextual()) documentId = downId.asText();
 
             JsonNode no = document.get("no");
-            if (no != null && no.isString()) documentNo = no.asString();
+            if (no != null && no.isTextual()) documentNo = no.asText();
 
             JsonNode waiting = document.get("waitingProcess");
             if (waiting != null && waiting.isObject()) {
                 JsonNode id = waiting.get("id");
-                if (id != null && id.isString()) waitingProcessId = id.asString();
+                if (id != null && id.isTextual()) waitingProcessId = id.asText();
 
                 JsonNode processed = waiting.get("processedByUserId");
                 if (processed != null && processed.canConvertToInt()) processedByUserId = processed.asInt();
 
                 JsonNode pos = waiting.get("position");
-                if (pos != null && pos.isString()) position = pos.asString();
+                if (pos != null && pos.isTextual()) position = pos.asText();
 
                 JsonNode ps = waiting.get("pageSign");
                 if (ps != null && ps.canConvertToInt()) pageSign = ps.asInt();
@@ -929,5 +937,7 @@ public class EContractServiceImpl implements EContractService {
         } catch (Exception e) {
             throw new IllegalStateException("Cannot parse response: " + e.getMessage() + "\nRAW=" + body, e);
         }
+
+
     }
 }
