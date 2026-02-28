@@ -295,11 +295,11 @@ public class EContractServiceImpl implements EContractService {
             eContract.setDocumentId(documentId);
             eContract.setDocumentNo(result.getData().no());
             eContractRepository.save(eContract);
-            //            result.getData().withSignMeta(positionA.pos(), positionB.pos());
+//          result.getData().withSignMeta(positionA.pos(), positionB.pos());
             String vnptToken = vnptEContractClient.getToken();
-            String userCodeFirst = eContract.getUserId().toString();
+            String userCodeSecond = eContract.getUserId().toString();
 
-            updateProcess(vnptToken, documentId, userCodeFirst, "hoangtuzami", positionA.pos(), positionB.pos(), positionA.pageSign());
+            updateProcess(vnptToken, documentId, "hoangtuzami", userCodeSecond, positionA.pos(), positionB.pos(), positionA.pageSign());
 
 
             return econtractClient.sendProcess(vnptToken, documentId).getData();
