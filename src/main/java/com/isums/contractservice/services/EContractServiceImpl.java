@@ -2,6 +2,7 @@ package com.isums.contractservice.services;
 
 import com.isums.assetservice.grpc.AssetItemDto;
 import com.isums.contractservice.domains.events.ConfirmAndSendToTenantEvent;
+import com.isums.contractservice.exceptions.NotFoundException;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import com.isums.contractservice.domains.dtos.*;
@@ -114,7 +115,7 @@ public class EContractServiceImpl implements EContractService {
 
             HouseResponse house = houseGrpcClient.getHouseById(req.houseId());
             if (house == null) {
-                throw new IllegalStateException("House with id " + req.houseId() + " not found");
+                throw new NotFoundException("House with id " + req.houseId() + " not found");
             }
 
             System.out.println("House is found " + house);
@@ -173,7 +174,7 @@ public class EContractServiceImpl implements EContractService {
     public EContractDto getEContractById(UUID id) {
         try {
             EContract econtract = eContractRepository.findById(id)
-                    .orElseThrow(() -> new IllegalStateException("Contract with id " + id + " not found"));
+                    .orElseThrow(() -> new NotFoundException("Contract with id " + id + " not found"));
 
             return eContractMapper.contractToDto(econtract);
         } catch (Exception ex) {
@@ -231,7 +232,7 @@ public class EContractServiceImpl implements EContractService {
     public VnptDocumentDto confirmEContract(UUID contractId) {
         try {
             EContract eContract = eContractRepository.findById(contractId)
-                    .orElseThrow(() -> new IllegalStateException("Contract with id " + contractId + " not found"));
+                    .orElseThrow(() -> new NotFoundException("Contract with id " + contractId + " not found"));
 
             eContractRepository.save(eContract);
 
@@ -250,7 +251,7 @@ public class EContractServiceImpl implements EContractService {
 
             var processLogin = parseProcessLogin(body);
             EContract eContract = eContractRepository.findByDocumentId(processLogin.documentId())
-                    .orElseThrow(() -> new IllegalStateException("EContract not found"));
+                    .orElseThrow(() -> new NotFoundException("EContract not found"));
 
             eContract.setStatus(EContractStatus.CONFIRM);
             eContractRepository.save(eContract);
@@ -317,7 +318,7 @@ public class EContractServiceImpl implements EContractService {
             var vnptDocument = getAccessInfoByProcessCode(processCode);
 
             EContract eContract = eContractRepository.findByDocumentNo(vnptDocument.documentNo())
-                    .orElseThrow(() -> new IllegalStateException("EContract not found"));
+                    .orElseThrow(() -> new NotFoundException("EContract not found"));
 
             return eContractMapper.contractToDto(eContract);
         } catch (Exception ex) {
@@ -352,7 +353,7 @@ public class EContractServiceImpl implements EContractService {
             if (processResponse.getSuccess() && processResponse.getData().id() != null) {
                 log.info("VNPT signProcess success: data={}", processResponse.getData());
                 var eContract = eContractRepository.findByDocumentId(String.valueOf(processResponse.getData().id()))
-                        .orElseThrow(() -> new IllegalStateException("EContract not found for documentId: " + processResponse.getData().id()));
+                        .orElseThrow(() -> new NotFoundException("EContract not found for documentId: " + processResponse.getData().id()));
                 eContract.setStatus(EContractStatus.IN_PROGRESS);
                 eContractRepository.save(eContract);
             }
@@ -363,6 +364,36 @@ public class EContractServiceImpl implements EContractService {
             log.error("signProcess failed", ex);
             throw new IllegalStateException("signProcess failed");
         }
+    }
+
+    @Override
+    public ProcessResponse signProcessForAdmin(VnptProcessDto process) {
+        VnptProcessDto updatedProcess = process.withToken(vnptEContractClient.getToken());
+        var processResponse = vnptEContractClient.signProcess(updatedProcess);
+
+        log.info("VNPT signProcess: success={} message={} dataNull={}",
+                processResponse == null ? null : processResponse.getSuccess(),
+                processResponse == null ? null : processResponse.getMessage(),
+                processResponse == null || processResponse.getData() == null);
+
+        if (processResponse == null) {
+            throw new IllegalStateException("VNPT signProcess returned null");
+        }
+
+        if (processResponse.getData() == null) {
+            log.error("VNPT signProcess failed payload={}", processResponse);
+            throw new IllegalStateException("VNPT signProcess failed: " + processResponse.getMessage());
+        }
+
+        if (processResponse.getSuccess() && processResponse.getData().id() != null) {
+            log.info("VNPT signProcess success: data={}", processResponse.getData());
+            var eContract = eContractRepository.findByDocumentId(String.valueOf(processResponse.getData().id()))
+                    .orElseThrow(() -> new NotFoundException("EContract not found for documentId: " + processResponse.getData().id()));
+            eContract.setStatus(EContractStatus.COMPLETED);
+            eContractRepository.save(eContract);
+        }
+
+        return processResponse.getData();
     }
 
     private void updateProcess(String token, String documentId, String userCodeFirst, String userCodeSecond, String positionA, String positionB, int pageSign) {

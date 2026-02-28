@@ -24,4 +24,6 @@ public interface EContractService {
     public EContractDto getEContractOutSystem(String processCode);
 
     public ProcessResponse signProcess(VnptProcessDto process);
+
+    public ProcessResponse signProcessForAdmin(VnptProcessDto process);
 }
