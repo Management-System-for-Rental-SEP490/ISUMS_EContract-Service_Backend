@@ -39,6 +39,7 @@ import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
+import org.springframework.cache.interceptor.SimpleKey;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.HtmlUtils;
@@ -186,7 +187,7 @@ public class EContractServiceImpl implements EContractService {
     @Cacheable(value = "allEContracts")
     public List<EContractDto> getAllEContracts() {
         try {
-            Object springKey = org.springframework.cache.interceptor.SimpleKey.EMPTY;
+            Object springKey = SimpleKey.EMPTY;
 
             Cache cache = cacheManager.getCache("allEContracts");
             boolean hit = cache != null && cache.get(springKey) != null;
