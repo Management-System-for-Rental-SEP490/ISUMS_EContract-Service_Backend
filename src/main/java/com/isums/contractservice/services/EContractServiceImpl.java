@@ -353,7 +353,7 @@ public class EContractServiceImpl implements EContractService {
                 log.info("VNPT signProcess success: data={}", processResponse.getData());
                 var eContract = eContractRepository.findByDocumentId(String.valueOf(processResponse.getData().id()))
                         .orElseThrow(() -> new NotFoundException("EContract not found for documentId: " + processResponse.getData().id()));
-                eContract.setStatus(EContractStatus.IN_PROGRESS);
+                eContract.setStatus(EContractStatus.COMPLETED);
                 eContractRepository.save(eContract);
             }
 
@@ -383,7 +383,7 @@ public class EContractServiceImpl implements EContractService {
             log.info("VNPT signProcess success: data={}", processResponse.getData());
             var eContract = eContractRepository.findByDocumentId(String.valueOf(processResponse.getData().id()))
                     .orElseThrow(() -> new NotFoundException("EContract not found for documentId: " + processResponse.getData().id()));
-            eContract.setStatus(EContractStatus.COMPLETED);
+            eContract.setStatus(EContractStatus.IN_PROGRESS);
             eContractRepository.save(eContract);
         }
 
