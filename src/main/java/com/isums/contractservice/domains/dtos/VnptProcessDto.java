@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record VnptProcessDto(
+        String processCode,
         String token,
         String processId,
         String reason,
@@ -18,4 +19,10 @@ public record VnptProcessDto(
         Boolean showReason,
         Boolean confirmTermsConditions
 ) {
+    public VnptProcessDto withToken(String newToken) {
+        return new VnptProcessDto(
+                processCode, newToken, processId, reason, reject, otp, signatureDisplayMode, signatureImage, signingPage, signingPosition,
+                signatureText, fontSize, showReason, confirmTermsConditions
+        );
+    }
 }

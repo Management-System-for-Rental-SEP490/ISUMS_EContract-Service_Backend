@@ -13,11 +13,13 @@ public interface VnptEContractClient {
 
     VnptResult<List<VnptUserDto>> CreateOrUpdateUser(String token, VnptUserUpsert user);
 
-    VnptResult<ProcessLoginInfoDto> getAccessInfoByProcessCode(String processCode);
+    String getAccessInfoByProcessCode(String processCode);
 
     VnptResult<VnptDocumentDto> UpdateProcess(String token, VnptUpdateProcessDTO update);
 
     VnptResult<VnptDocumentDto> sendProcess(String token, String documentId);
 
-    VnptResult<ProcessResponse> signProcess(String token, VnptProcessDto process);
+    VnptResult<ProcessResponse> signProcess(VnptProcessDto process);
+
+    VnptResult<VnptDocumentDto> getEContractById(String documentId, String token);
 }

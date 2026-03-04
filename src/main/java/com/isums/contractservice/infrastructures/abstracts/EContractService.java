@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 public interface EContractService {
-    public EContractDto CreateDraftEContract(UUID actorId, CreateEContractRequest req);
+    public EContractDto createDraftEContract(UUID actorId, CreateEContractRequest req);
 
     public EContractDto getEContractById(UUID id);
 
@@ -15,13 +15,17 @@ public interface EContractService {
 
     public EContractDto updateEContractById(UUID id, UpdateEContractRequest req);
 
-    public void confirmAndSendToTenant(UUID contractId);
+    public VnptDocumentDto confirmEContract(UUID contractId);
 
-    public ProcessLoginInfoDto getAccessInfoByProcessCode(ProcessCodeLoginRequest req);
+    public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode);
 
-    public VnptDocumentDto readyEContract(ReadyEContractRequest req);
+//    public VnptDocumentDto readyEContract(ReadyEContractRequest req);
 
-    public EContractDto getEContractOutSystem(GetEContractOutSystemRequest req);
+    public EContractDto getEContractOutSystem(String processCode);
 
     public ProcessResponse signProcess(VnptProcessDto process);
+
+    public ProcessResponse signProcessForAdmin(VnptProcessDto process);
+
+    public VnptDocumentDto getVnptEContractByDocumentId(String documentId);
 }

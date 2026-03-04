@@ -5,13 +5,16 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name = "EContractTemplates")
+@Table(name = "econtract_templates", indexes = {
+        @Index(name = "idx_template_code", columnList = "code", unique = true)
+})
 @NoArgsConstructor
 @AllArgsConstructor
 @Data
@@ -29,14 +32,10 @@ public class EContractTemplate {
     @Column(nullable = false)
     private String name;
 
-    @Column(columnDefinition = "text")
+    @Column(name = "content_html", columnDefinition = "text")
     private String contentHtml;
 
-    @Column(nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
+    @CreationTimestamp
     private Instant createdAt;
-
-    @PrePersist
-    void prePersist() {
-        if (createdAt == null) createdAt = Instant.now();
-    }
 }
