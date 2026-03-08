@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 public record CreateEContractRequest(
+        Boolean isNewAccount,
         String name,
         String email,
         @Nullable String phoneNumber,

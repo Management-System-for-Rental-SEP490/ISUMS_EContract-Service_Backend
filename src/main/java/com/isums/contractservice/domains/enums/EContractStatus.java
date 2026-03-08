@@ -2,12 +2,13 @@ package com.isums.contractservice.domains.enums;
 
 public enum EContractStatus {
     DRAFT,
-    CONFIRM,
     READY,
+    CONFIRM_BY_LANDLORD,
     IN_PROGRESS,
+    CONFIRM_BY_TENANT,
     COMPLETED,
     CORRECTING,
     CANCELLED,
-    DELETED,
-    REJECTED
+    REJECTED_BY_TENANT,
+    REJECTED_BY_LANDLORD
 }

@@ -2,22 +2,16 @@ package com.isums.contractservice.domains.dtos;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.isums.contractservice.configurations.VnptInstantDeserializer;
-import tools.jackson.databind.annotation.JsonDeserialize;
 
-import java.time.Instant;
 import java.util.UUID;
 
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record ProcessResponse(
         @JsonProperty("id") UUID id,
 
-        @JsonDeserialize(using = VnptInstantDeserializer.class)
-        @JsonProperty("createdDate") Instant createdDate,
-        @JsonDeserialize(using = VnptInstantDeserializer.class)
-        @JsonProperty("lastModifiedDate") Instant lastModifiedDate,
-        @JsonDeserialize(using = VnptInstantDeserializer.class)
-        @JsonProperty("completedDate") Instant completedDate,
+        @JsonProperty("createdDate") String createdDate,
+        @JsonProperty("lastModifiedDate") String lastModifiedDate,
+        @JsonProperty("completedDate") String completedDate,
 
         @JsonProperty("no") String no,
         @JsonProperty("subject") String subject,
@@ -49,8 +43,7 @@ public record ProcessResponse(
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record WaitingProcessDto(
             @JsonProperty("id") UUID id,
-            @JsonDeserialize(using = VnptInstantDeserializer.class)
-            @JsonProperty("createdDate") Instant createdDate,
+            @JsonProperty("createdDate") String createdDate,
             @JsonProperty("isOrder") boolean isOrder,
             @JsonProperty("orderNo") int orderNo,
             @JsonProperty("pageSign") int pageSign,
