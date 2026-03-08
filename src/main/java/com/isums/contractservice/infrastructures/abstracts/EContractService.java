@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 public interface EContractService {
-    public EContractDto createDraftEContract(UUID actorId, CreateEContractRequest req);
+    public EContractDto createDraftEContract(UUID actorId, String jwtToken, CreateEContractRequest req);
 
     public EContractDto getEContractById(UUID id);
 
@@ -15,7 +15,9 @@ public interface EContractService {
 
     public EContractDto updateEContractById(UUID id, UpdateEContractRequest req);
 
-    public VnptDocumentDto confirmEContract(UUID contractId);
+    public VnptDocumentDto readyEContract(UUID contractId);
+
+    public void confirmEContract(UUID contractId, String keycloakId, String jwtToken);
 
     public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode);
 

@@ -249,6 +249,12 @@ public class VnptEContractClientImpl implements VnptEContractClient {
                 return VnptResult.error("Missing update payload");
             }
 
+            try {
+                log.info("UpdateProcess REQUEST: {}", mapper.writeValueAsString(update));
+            } catch (JsonProcessingException e) {
+                log.warn("Cannot serialize update payload");
+            }
+
             String raw = vnptRestClient.post()
                     .uri(uri)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -261,6 +267,8 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             if (raw == null || raw.isBlank()) {
                 return VnptResult.error("VNPT returned empty body");
             }
+
+            log.info("UpdateProcess RESPONSE: {}", raw);
 
             int max = 4000;
             String clipped = raw.length() > max ? raw.substring(0, max) + "..." : raw;
@@ -313,7 +321,6 @@ public class VnptEContractClientImpl implements VnptEContractClient {
     public VnptResult<ProcessResponse> signProcess(VnptProcessDto process) {
         final String uri = "/api/documents/process";
         return safeCall(HttpMethod.POST, uri, () -> {
-
             var entity = vnptRestClient.post()
                     .uri(uri)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -324,26 +331,14 @@ public class VnptEContractClientImpl implements VnptEContractClient {
                     .toEntity(String.class);
 
             var status = entity.getStatusCode();
-            var headers = entity.getHeaders();
             var raw = entity.getBody();
 
             if (!status.is2xxSuccessful()) {
-                return VnptResult.error("HTTP " + status.value() + " "
-                        + "\n" + HttpMethod.POST + " " + uri
-                        + "\nHeaders=" + headers
+                return VnptResult.error("HTTP " + status.value() + " " + HttpMethod.POST + " " + uri
                         + (raw == null ? "" : "\n" + raw));
             }
-
-            if (raw == null || raw.isBlank()) {
-                return VnptResult.error("VNPT returned empty body (status=" + status.value() + ", headers=" + headers + ")");
-            }
-
-            try {
-                return mapper.readValue(raw, new TypeReference<VnptResult<ProcessResponse>>() {
-                });
-            } catch (JsonProcessingException e) {
-                throw new RuntimeException(e);
-            }
+            if (raw == null || raw.isBlank()) return VnptResult.error("VNPT returned empty body");
+            return parseResult(raw, ProcessResponse.class);
         });
     }
 
@@ -420,5 +415,36 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             throw new IllegalArgumentException(msg);
 
         return string;
+    }
+
+    private <T> VnptResult<T> parseResult(String raw, Class<T> dataClass) {
+        try {
+            JsonNode root = mapper.readTree(raw);
+            JsonNode dataNode = root.get("data");
+            if (dataNode == null || dataNode.isNull()) {
+                return VnptResult.error("Missing data field. RAW=" + raw.substring(0, Math.min(500, raw.length())));
+            }
+            T dto = mapper.treeToValue(dataNode, dataClass);
+            return VnptResult.success(dto);
+        } catch (Exception e) {
+            log.error("Parse failed: {}", e.getMessage());
+            return VnptResult.error("Cannot parse: " + e.getMessage());
+        }
+    }
+
+    private <T> VnptResult<List<T>> parseListResult(String raw, Class<T> elementClass) {
+        try {
+            JsonNode root = mapper.readTree(raw);
+            JsonNode dataNode = root.get("data");
+            if (dataNode == null || dataNode.isNull()) {
+                return VnptResult.error("Missing data field");
+            }
+            List<T> list = mapper.treeToValue(dataNode,
+                    mapper.getTypeFactory().constructCollectionType(List.class, elementClass));
+            return VnptResult.success(list);
+        } catch (Exception e) {
+            log.error("Parse failed: {}", e.getMessage());
+            return VnptResult.error("Cannot parse: " + e.getMessage());
+        }
     }
 }

@@ -14,10 +14,10 @@ import java.time.Instant;
 import java.util.UUID;
 
 @Entity
-@Table(name="econtracts", indexes = {
-        @Index(name="idx_econtracts_house_status", columnList="house_id,status"),
-        @Index(name="idx_econtracts_tenant", columnList="tenant_id"),
-        @Index(name="idx_econtracts_user", columnList="user_id")
+@Table(name = "econtracts", indexes = {
+        @Index(name = "idx_econtracts_house_status", columnList = "house_id,status"),
+        @Index(name = "idx_econtracts_tenant", columnList = "tenant_id"),
+        @Index(name = "idx_econtracts_user", columnList = "user_id")
 })
 @Data
 @NoArgsConstructor
@@ -40,7 +40,7 @@ public class EContract implements Serializable {
     @Column(name = "user_id", nullable = false)
     private UUID userId;
 
-    @Column(name="tenant_id")
+    @Column(name = "tenant_id")
     private UUID tenantId;
 
     @Column(nullable = false, columnDefinition = "text")
@@ -59,6 +59,8 @@ public class EContract implements Serializable {
 
     @Column(name = "end_at")
     private Instant endAt;
+
+    private Long price;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

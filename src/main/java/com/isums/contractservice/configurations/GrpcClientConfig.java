@@ -24,9 +24,8 @@ public class GrpcClientConfig {
     }
 
     @Bean
-    UserServiceGrpc.UserServiceBlockingStub userStub(GrpcChannelFactory channels, GrpcTokenInterceptor tokenInterceptor) {
-        return UserServiceGrpc.newBlockingStub(channels.createChannel("user"))
-                .withInterceptors(tokenInterceptor);
+    UserServiceGrpc.UserServiceBlockingStub userStub(GrpcChannelFactory channels) {
+        return UserServiceGrpc.newBlockingStub(channels.createChannel("user"));
     }
 
     @Bean

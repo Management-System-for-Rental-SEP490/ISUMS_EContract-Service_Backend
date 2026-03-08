@@ -19,8 +19,10 @@ import com.isums.houseservice.grpc.HouseResponse;
 import com.isums.userservice.grpc.UserResponse;
 import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
+import common.statics.Roles;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+import jakarta.ws.rs.ForbiddenException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
@@ -33,7 +35,6 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Entities;
 import org.jspecify.annotations.NonNull;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
@@ -42,6 +43,7 @@ import org.springframework.cache.annotation.Caching;
 import org.springframework.cache.interceptor.SimpleKey;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.HtmlUtils;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -71,46 +73,39 @@ public class EContractServiceImpl implements EContractService {
     private final UserGrpcClient userGrpcClient;
     private final ObjectMapper mapper;
 
-    @Value("${app.public-base-url}")
-    private String publicBaseUrl;
-
     private final DateTimeFormatter dayMonthYear = DateTimeFormatter.ofPattern("dd/MM/yyyy")
             .withZone(ZoneOffset.UTC);
 
     @Override
     @CacheEvict(allEntries = true, value = "allEContracts")
-    public EContractDto createDraftEContract(UUID actorId, CreateEContractRequest req) {
+    public EContractDto createDraftEContract(UUID actorId, String jwtToken, CreateEContractRequest req) {
         try {
 
             UUID primaryTenantUserId;
-            try {
+            if (!req.isNewAccount()) {
                 String email = req.email();
-                UserResponse res = userGrpcClient.getUserByEmail(email);
+                UserResponse res = userGrpcClient.getUserByEmail(email, jwtToken); //double-check
                 primaryTenantUserId = UUID.fromString(res.getId());
 
-            } catch (StatusRuntimeException e) {
-                if (e.getStatus().getCode() == Status.Code.NOT_FOUND) {
-                    primaryTenantUserId = UUID.randomUUID();
+            } else {
+                primaryTenantUserId = UUID.randomUUID();
 
-                    String tokenVnpt = econtractClient.getToken();
-                    createVnptUser(tokenVnpt, primaryTenantUserId, req);
+                String tokenVnpt = econtractClient.getToken();
+                createVnptUser(tokenVnpt, primaryTenantUserId, req);
 
-                    CreateUserPlacedEvent userEvent = CreateUserPlacedEvent.builder()
-                            .id(primaryTenantUserId)
-                            .name(req.name())
-                            .email(req.email())
-                            .phoneNumber(req.phoneNumber())
-                            .identityNumber(req.identityNumber())
-                            .isEnabled(false)
-                            .build();
+                CreateUserPlacedEvent userEvent = CreateUserPlacedEvent.builder()
+                        .id(primaryTenantUserId)
+                        .name(req.name())
+                        .email(req.email())
+                        .phoneNumber(req.phoneNumber())
+                        .identityNumber(req.identityNumber())
+                        .isEnabled(false)
+                        .build();
 
 
-                    kafkaTemplate.send("createUser-topic", userEvent);
-                    System.out.println("Kafka is sent " + userEvent);
+                kafkaTemplate.send("createUser-topic", userEvent);
+                System.out.println("Kafka is sent " + userEvent);
 
-                } else {
-                    throw e;
-                }
             }
 
             HouseResponse house = houseGrpcClient.getHouseById(req.houseId());
@@ -194,7 +189,7 @@ public class EContractServiceImpl implements EContractService {
             log.info("allEContracts cache_hit={}", hit);
 
             long t0 = System.nanoTime();
-            List<EContract> econtracts = eContractRepository.findAll();
+            List<EContract> econtracts = eContractRepository.findAllByOrderByCreatedAtAsc();
             long dbMs = (System.nanoTime() - t0) / 1_000_000;
             log.info("db_findAll_ms={}", dbMs);
 
@@ -229,18 +224,41 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @CacheEvict(allEntries = true, value = "allEContracts")
-    public VnptDocumentDto confirmEContract(UUID contractId) {
+    public VnptDocumentDto readyEContract(UUID contractId) {
         try {
             EContract eContract = eContractRepository.findById(contractId)
                     .orElseThrow(() -> new NotFoundException("Contract with id " + contractId + " not found"));
-
-            eContractRepository.save(eContract);
 
             return readyEContract(eContract);
         } catch (Exception ex) {
             log.error("confirmAndSendToTenant failed", ex);
             throw new IllegalStateException("confirmAndSendToTenant failed");
         }
+    }
+
+    @Override
+    @CacheEvict(allEntries = true, value = "allEContracts")
+    @Transactional
+    public void confirmEContract(UUID contractId, String keycloakId, String jwtToken) {
+
+        EContract eContract = eContractRepository.findById(contractId)
+                .orElseThrow(() -> new NotFoundException("Contract with id " + contractId + " not found"));
+
+        if (eContract.getStatus() != EContractStatus.READY) {
+            throw new IllegalStateException("Cannot confirm contract in status: " + eContract.getStatus());
+        }
+
+        var role = userGrpcClient.getUserRoles(keycloakId, jwtToken);
+
+        if (role.getRolesList().contains(Roles.LANDLORD)) {
+            eContract.setStatus(EContractStatus.CONFIRM_BY_LANDLORD);
+        } else {
+            throw new ForbiddenException("User is not landlord");
+        }
+        eContractRepository.save(eContract);
+
+        log.info("confirmEContract: eContractId={} status={}", eContract.getId(), eContract.getStatus());
+
     }
 
     @Override
@@ -253,10 +271,12 @@ public class EContractServiceImpl implements EContractService {
             EContract eContract = eContractRepository.findByDocumentId(processLogin.documentId())
                     .orElseThrow(() -> new NotFoundException("EContract not found"));
 
-            eContract.setStatus(EContractStatus.CONFIRM);
+            eContract.setStatus(EContractStatus.CONFIRM_BY_TENANT);
+
+            log.info("getAccessInfoByProcessCode: eContractId={} status={}", eContract.getId(), eContract.getStatus());
             eContractRepository.save(eContract);
 
-            return processLogin;
+            return parseProcessLogin(body);
         } catch (Exception ex) {
             log.error("getAccessInfoByProcessCode failed", ex);
             throw new IllegalStateException("getAccessInfoByProcessCode failed", ex);
@@ -296,11 +316,11 @@ public class EContractServiceImpl implements EContractService {
             eContract.setDocumentId(documentId);
             eContract.setDocumentNo(result.getData().no());
             eContractRepository.save(eContract);
-//          result.getData().withSignMeta(positionA.pos(), positionB.pos());
             String vnptToken = vnptEContractClient.getToken();
             String userCodeSecond = eContract.getUserId().toString();
+            String userCodeFirst = "hoangtuzami";
 
-            updateProcess(vnptToken, documentId, "hoangtuzami", userCodeSecond, positionA.pos(), positionB.pos(), positionA.pageSign());
+            updateProcess(vnptToken, documentId, userCodeFirst, userCodeSecond, positionA.pos(), positionB.pos(), positionA.pageSign());
 
 
             return econtractClient.sendProcess(vnptToken, documentId).getData();
@@ -368,31 +388,36 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     public ProcessResponse signProcessForAdmin(VnptProcessDto process) {
-        VnptProcessDto updatedProcess = process.withToken(vnptEContractClient.getToken());
-        var processResponse = vnptEContractClient.signProcess(updatedProcess);
+        try {
+            VnptProcessDto updatedProcess = process.withToken(vnptEContractClient.getToken());
+            var processResponse = vnptEContractClient.signProcess(updatedProcess);
 
-        if (processResponse == null) {
-            throw new IllegalStateException("VNPT signProcess returned null");
+            if (processResponse == null) {
+                throw new IllegalStateException("VNPT signProcess returned null");
+            }
+
+            if (processResponse.getData() == null) {
+                log.error("VNPT signProcess failed payload={}", processResponse);
+                throw new IllegalStateException("VNPT signProcess failed: " + processResponse.getMessage());
+            }
+
+            if (processResponse.getSuccess() && processResponse.getData().id() != null) {
+                log.info("VNPT signProcess success: data={}", processResponse.getData());
+                var eContract = eContractRepository.findByDocumentId(String.valueOf(processResponse.getData().id()))
+                        .orElseThrow(() -> new NotFoundException("EContract not found for documentId: " + processResponse.getData().id()));
+                eContract.setStatus(EContractStatus.IN_PROGRESS);
+                eContractRepository.save(eContract);
+            }
+
+            return processResponse.getData();
+        } catch (Exception ex) {
+            log.error("signProcessForAdmin failed", ex);
+            throw ex;
         }
-
-        if (processResponse.getData() == null) {
-            log.error("VNPT signProcess failed payload={}", processResponse);
-            throw new IllegalStateException("VNPT signProcess failed: " + processResponse.getMessage());
-        }
-
-        if (processResponse.getSuccess() && processResponse.getData().id() != null) {
-            log.info("VNPT signProcess success: data={}", processResponse.getData());
-            var eContract = eContractRepository.findByDocumentId(String.valueOf(processResponse.getData().id()))
-                    .orElseThrow(() -> new NotFoundException("EContract not found for documentId: " + processResponse.getData().id()));
-            eContract.setStatus(EContractStatus.IN_PROGRESS);
-            eContractRepository.save(eContract);
-        }
-
-        return processResponse.getData();
     }
 
     @Override
-    @Cacheable(value = "vnptDocumentById", key = "#documentId")
+    @Cacheable(cacheNames = "vnptDocumentById", key = "#documentId")
     public VnptDocumentDto getVnptEContractByDocumentId(String documentId) {
         String token = vnptEContractClient.getToken();
         var eContract = vnptEContractClient.getEContractById(documentId, token);
@@ -429,7 +454,8 @@ public class EContractServiceImpl implements EContractService {
                 processes
         );
 
-        econtractClient.UpdateProcess(token, request);
+        var result = econtractClient.UpdateProcess(token, request);
+        log.info("Update process result: {}", result);
     }
 
     private EContractDto createDocument(UUID actorId, UUID primaryTenantUserId, CreateEContractRequest req, HouseResponse house) {

@@ -1,8 +1,7 @@
 package com.isums.contractservice.infrastructures.grpcs;
 
-import com.isums.userservice.grpc.GetUserByEmailRequest;
-import com.isums.userservice.grpc.UserResponse;
-import com.isums.userservice.grpc.UserServiceGrpc;
+import com.isums.contractservice.configurations.BearerTokenCallCredentials;
+import com.isums.userservice.grpc.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -12,8 +11,13 @@ public class UserGrpcClient {
 
     private final UserServiceGrpc.UserServiceBlockingStub stub;
 
-    public UserResponse getUserByEmail(String email) {
+    public UserResponse getUserByEmail(String email, String jwtToken) {
         GetUserByEmailRequest req = GetUserByEmailRequest.newBuilder().setEmail(email).build();
-        return stub.getUserByEmail(req);
+        return stub.withCallCredentials(new BearerTokenCallCredentials(jwtToken)).getUserByEmail(req);
+    }
+
+    public GetUserRolesResponse getUserRoles(String keycloakId, String jwtToken) {
+        GetUserRolesRequest req = GetUserRolesRequest.newBuilder().setKeycloakId(keycloakId).build();
+        return stub.withCallCredentials(new BearerTokenCallCredentials(jwtToken)).getUserRoles(req);
     }
 }
