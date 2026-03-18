@@ -20,4 +20,9 @@ public class UserGrpcClient {
         GetUserRolesRequest req = GetUserRolesRequest.newBuilder().setKeycloakId(keycloakId).build();
         return stub.withCallCredentials(new BearerTokenCallCredentials(jwtToken)).getUserRoles(req);
     }
+
+    public UserResponse getUserById(String userId) {
+        GetUserByIdRequest req = GetUserByIdRequest.newBuilder().setUserId(userId).build();
+        return stub.getUserById(req);
+    }
 }
