@@ -20,8 +20,6 @@ import com.isums.userservice.grpc.UserResponse;
 import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import common.statics.Roles;
-import io.grpc.Status;
-import io.grpc.StatusRuntimeException;
 import jakarta.ws.rs.ForbiddenException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +33,7 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Entities;
 import org.jspecify.annotations.NonNull;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.CacheEvict;
@@ -72,9 +71,11 @@ public class EContractServiceImpl implements EContractService {
     private final CacheManager cacheManager;
     private final UserGrpcClient userGrpcClient;
     private final ObjectMapper mapper;
+    private final KeycloakAdminServiceImpl keycloakAdminService;
+    @Value("${app.login-url}")
+    private String loginUrl;
 
-    private final DateTimeFormatter dayMonthYear = DateTimeFormatter.ofPattern("dd/MM/yyyy")
-            .withZone(ZoneOffset.UTC);
+    private final DateTimeFormatter dayMonthYear = DateTimeFormatter.ofPattern("dd/MM/yyyy").withZone(ZoneOffset.UTC);
 
     @Override
     @CacheEvict(allEntries = true, value = "allEContracts")
@@ -376,6 +377,10 @@ public class EContractServiceImpl implements EContractService {
                         .orElseThrow(() -> new NotFoundException("EContract not found for documentId: " + processResponse.getData().id()));
                 eContract.setStatus(EContractStatus.COMPLETED);
                 eContractRepository.save(eContract);
+
+                log.info("signProcess COMPLETED contractId={} userId={}", eContract.getId(), eContract.getUserId());
+
+                activateTenantIfNeeded(eContract.getUserId());
             }
 
             return processResponse.getData();
@@ -383,6 +388,38 @@ public class EContractServiceImpl implements EContractService {
         } catch (Exception ex) {
             log.error("signProcess failed", ex);
             throw new IllegalStateException("signProcess failed");
+        }
+    }
+
+    private void activateTenantIfNeeded(UUID userId) {
+        try {
+            UserResponse user = userGrpcClient.getUserById(userId.toString());
+
+            if (user == null) {
+                log.warn("activateTenant: user not found userId={}", userId);
+                return;
+            }
+
+            if (user.getIsEnabled()) {
+                log.info("activateTenant: user already enabled userId={} → skip", userId);
+                return;
+            }
+
+            String tempPassword = keycloakAdminService.activateUser(user.getKeycloakId());
+
+            UserActivatedEvent event = UserActivatedEvent.builder()
+                    .userId(userId)
+                    .email(user.getEmail())
+                    .name(user.getName())
+                    .tempPassword(tempPassword)
+                    .loginUrl(loginUrl)
+                    .build();
+
+            kafkaTemplate.send("user-activated-topic", event);
+            log.info("activateTenant: sent activation event userId={} email={}", userId, user.getEmail());
+
+        } catch (Exception e) {
+            log.error("activateTenant failed userId={} — contract still completed", userId, e);
         }
     }
 
