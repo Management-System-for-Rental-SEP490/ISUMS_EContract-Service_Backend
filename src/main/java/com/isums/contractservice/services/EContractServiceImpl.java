@@ -72,8 +72,6 @@ public class EContractServiceImpl implements EContractService {
     private final UserGrpcClient userGrpcClient;
     private final ObjectMapper mapper;
     private final KeycloakAdminServiceImpl keycloakAdminService;
-    @Value("${app.login-url}")
-    private String loginUrl;
 
     private final DateTimeFormatter dayMonthYear = DateTimeFormatter.ofPattern("dd/MM/yyyy").withZone(ZoneOffset.UTC);
 
@@ -412,7 +410,6 @@ public class EContractServiceImpl implements EContractService {
                     .email(user.getEmail())
                     .name(user.getName())
                     .tempPassword(tempPassword)
-                    .loginUrl(loginUrl)
                     .build();
 
             kafkaTemplate.send("user-activated-topic", event);
