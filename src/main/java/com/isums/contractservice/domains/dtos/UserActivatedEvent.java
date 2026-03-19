@@ -9,7 +9,6 @@ public record UserActivatedEvent(
         UUID userId,
         String email,
         String name,
-        String tempPassword,
-        String loginUrl
+        String tempPassword
 ) {
 }
