@@ -5,6 +5,7 @@ import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -22,7 +23,7 @@ public class EContractController {
     @PostMapping
     public ApiResponse<EContractDto> createDocument(@AuthenticationPrincipal Jwt jwt, @RequestBody CreateEContractRequest req) {
         UUID actorId = extractActorId(jwt);
-        EContractDto res = contractService.createDraftEContract(actorId, req);
+        EContractDto res = contractService.createDraftEContract(actorId, jwt.getTokenValue(), req);
         return ApiResponses.created(res, "Success to create e-contract");
     }
 
@@ -58,14 +59,21 @@ public class EContractController {
         }
     }
 
-    @PutMapping("/confirm/{id}")
-    public ApiResponse<VnptDocumentDto> confirmEContract(@PathVariable UUID id) {
-        var res = contractService.confirmEContract(id);
+    @PutMapping("/ready/{id}")
+    public ApiResponse<VnptDocumentDto> readyEContract(@PathVariable UUID id) {
+        var res = contractService.readyEContract(id);
         return ApiResponses.ok(res, "Success to confirm e-contract");
     }
 
+    @PreAuthorize("hasRole('LANDLORD')")
+    @PutMapping("/confirm-by-admin/{id}")
+    public ApiResponse<Void> confirmByAdminEContract(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
+        contractService.confirmEContract(id, jwt.getSubject(), jwt.getTokenValue());
+        return ApiResponses.ok(null, "Success to confirm e-contract");
+    }
+
     // Test VNPT EContract API
-    @GetMapping("/token")
+    @GetMapping("/test-token")
     public String getToken() {
         return client.getToken();
     }
@@ -75,12 +83,6 @@ public class EContractController {
         ProcessLoginInfoDto res = contractService.getAccessInfoByProcessCode(req.processCode());
         return ApiResponses.ok(res, "Success to get access info from VNPT");
     }
-
-//    @PostMapping("/ready")
-//    public ApiResponse<VnptDocumentDto> readyEContract(@RequestBody ReadyEContractRequest req) {
-//        VnptDocumentDto res = contractService.readyEContract(req);
-//        return ApiResponses.ok(res, "Success to ready e-contract");
-//    }
 
     @PostMapping("/outsystem")
     public ApiResponse<EContractDto> getEContractByDocumentId(@RequestBody ProcessCodeLoginRequest req) {
@@ -94,6 +96,7 @@ public class EContractController {
         return ApiResponses.ok(res, "Success to sign e-contract");
     }
 
+    @PreAuthorize("hasRole('LANDLORD')")
     @PostMapping("/sign-admin")
     public ApiResponse<ProcessResponse> signEContractAdmin(@RequestBody VnptProcessDto req) {
         ProcessResponse res = contractService.signProcessForAdmin(req);
