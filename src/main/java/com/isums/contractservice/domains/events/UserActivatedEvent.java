@@ -1,4 +1,4 @@
-package com.isums.contractservice.domains.dtos;
+package com.isums.contractservice.domains.events;
 
 import lombok.Builder;
 
