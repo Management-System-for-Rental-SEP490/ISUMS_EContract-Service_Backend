@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main ]
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   deploy:
     uses: Management-System-for-Rental-SEP490/.github/.github/workflows/deploy-java-service.yml@main
