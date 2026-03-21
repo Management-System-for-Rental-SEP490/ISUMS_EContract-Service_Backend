@@ -1,0 +1,16 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    uses: Management-System-for-Rental-SEP490/.github/.github/workflows/deploy-java-service.yml@main
+    with:
+      service_name: contract-service
+      xmx: 1280m
+    secrets:
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
