@@ -24,6 +24,14 @@ configurations {
 repositories {
     mavenCentral()
     mavenLocal()
+    maven {
+        name = "GitHubPackages"
+        url = uri("https://maven.pkg.github.com/Management-System-for-Rental-SEP490/ISUMS_Proto-common_gRPC-Maven-local")
+        credentials {
+            username = System.getenv("GITHUB_ACTOR") ?: ""
+            password = System.getenv("GITHUB_TOKEN") ?: ""
+        }
+    }
 }
 
 dependencyManagement {
