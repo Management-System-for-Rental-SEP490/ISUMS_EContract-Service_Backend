@@ -1,6 +1,8 @@
     package com.isums.contractservice.services;
     
     import com.isums.assetservice.grpc.AssetItemDto;
+    import com.isums.contractservice.domains.events.MapUserToHouseEvent;
+    import com.isums.contractservice.domains.events.UserActivatedEvent;
     import com.isums.contractservice.exceptions.NotFoundException;
     import com.isums.contractservice.infrastructures.abstracts.EContractService;
     import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
@@ -33,7 +35,6 @@
     import org.jsoup.nodes.Document;
     import org.jsoup.nodes.Entities;
     import org.jspecify.annotations.NonNull;
-    import org.springframework.beans.factory.annotation.Value;
     import org.springframework.cache.Cache;
     import org.springframework.cache.CacheManager;
     import org.springframework.cache.annotation.CacheEvict;
@@ -377,8 +378,9 @@
                     eContractRepository.save(eContract);
     
                     log.info("signProcess COMPLETED contractId={} userId={}", eContract.getId(), eContract.getUserId());
-    
+
                     activateTenantIfNeeded(eContract.getUserId());
+                    mapUserToHouse(eContract.getUserId(), eContract.getHouseId());
                 }
     
                 return processResponse.getData();
@@ -386,6 +388,20 @@
             } catch (Exception ex) {
                 log.error("signProcess failed", ex);
                 throw new IllegalStateException("signProcess failed");
+            }
+        }
+
+        private void mapUserToHouse(UUID userId, UUID houseId) {
+            try {
+                MapUserToHouseEvent event = MapUserToHouseEvent.builder()
+                        .userId(userId)
+                        .houseId(houseId)
+                        .build();
+
+                kafkaTemplate.send("map-user-to-house-topic", event);
+                log.info("mapUserToHouse: sent mapUserToHouseEvent userId={} houseId={}", userId, houseId);
+            } catch (Exception e) {
+                log.error("mapUserToHouse failed userId={} houseId={}", userId, houseId, e);
             }
         }
     
@@ -575,6 +591,7 @@
                     .name(contractName)
                     .html(html)
                     .status(EContractStatus.DRAFT)
+                    .price(req.rentAmount())
                     .createdBy(actorId)
                     .build();
     
