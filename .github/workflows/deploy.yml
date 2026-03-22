@@ -5,6 +5,7 @@ on:
     branches: [ main ]
 
 permissions:
+  id-token: write
   contents: read
   packages: write
 
@@ -15,7 +16,4 @@ jobs:
       service_name: contract-service
       xmx: 1280m
     secrets:
-      EC2_HOST: ${{ secrets.EC2_HOST }}
-      EC2_USER: ${{ secrets.EC2_USER }}
-      EC2_SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
       GH_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
