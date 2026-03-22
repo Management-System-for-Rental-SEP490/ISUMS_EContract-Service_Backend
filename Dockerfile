@@ -9,6 +9,6 @@ COPY build/libs/*.jar app.jar
 
 RUN mkdir -p /app/logs
 
-EXPOSE 8080
+EXPOSE 8082
 
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
