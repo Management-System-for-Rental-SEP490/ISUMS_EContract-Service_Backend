@@ -3,12 +3,15 @@ package com.isums.contractservice.controllers;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
+import com.isums.contractservice.infrastructures.clients.OcrServiceClient;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
@@ -19,6 +22,7 @@ import java.util.UUID;
 public class EContractController {
     private final EContractService contractService;
     private final VnptEContractClient client;
+    private final OcrServiceClient ocrServiceClient;
 
     @PostMapping
     public ApiResponse<EContractDto> createDocument(@AuthenticationPrincipal Jwt jwt, @RequestBody CreateEContractRequest req) {
@@ -107,5 +111,13 @@ public class EContractController {
     public ApiResponse<VnptDocumentDto> getVnptEContractByDocumentId(@PathVariable String documentId) {
         VnptDocumentDto res = contractService.getVnptEContractByDocumentId(documentId);
         return ApiResponses.ok(res, "Success to get e-contract");
+    }
+
+    @PostMapping(value = "/scan-cccd", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('LANDLORD')")
+    public ApiResponse<TenantIdentityDto> scanCccd(
+            @RequestParam("image") MultipartFile image) {
+        TenantIdentityDto result = ocrServiceClient.extractCccd(image);
+        return ApiResponses.ok(result, "CCCD scanned successfully");
     }
 }
