@@ -1,5 +1,6 @@
 package com.isums.contractservice.configurations;
 
+import com.isums.contractservice.domains.dtos.VnptEcontractProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
