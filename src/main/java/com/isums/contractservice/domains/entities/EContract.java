@@ -2,11 +2,9 @@ package com.isums.contractservice.domains.entities;
 
 import com.isums.contractservice.domains.enums.EContractStatus;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.io.Serializable;
@@ -15,9 +13,10 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "econtracts", indexes = {
-        @Index(name = "idx_econtracts_house_status", columnList = "house_id,status"),
-        @Index(name = "idx_econtracts_tenant", columnList = "tenant_id"),
-        @Index(name = "idx_econtracts_user", columnList = "user_id")
+        @Index(name = "idx_econtracts_house_status",  columnList = "house_id,status"),
+        @Index(name = "idx_econtracts_tenant",        columnList = "tenant_id"),
+        @Index(name = "idx_econtracts_user",          columnList = "user_id"),
+        @Index(name = "idx_econtracts_end_at",        columnList = "end_at,status")
 })
 @Data
 @NoArgsConstructor
@@ -25,12 +24,9 @@ import java.util.UUID;
 @Builder
 public class EContract implements Serializable {
 
-    @Id
-    @GeneratedValue
-    @UuidGenerator
+    @Id @GeneratedValue @UuidGenerator
     private UUID id;
 
-    // document form vnpt
     @Column(name = "document_id", unique = true)
     private String documentId;
 
@@ -62,6 +58,42 @@ public class EContract implements Serializable {
 
     private Long price;
 
+    @Column(name = "deposit_amount")
+    private Long depositAmount;
+
+    @Column(name = "pay_date")
+    private Integer payDate;
+
+    @Column(name = "late_days")
+    private Integer lateDays;
+
+    @Column(name = "late_penalty_percent")
+    private Integer latePenaltyPercent;
+
+    @Column(name = "deposit_refund_days")
+    private Integer depositRefundDays;
+
+    @Column(name = "handover_date")
+    private Instant handoverDate;
+
+    @Column(name = "tenant_identity_number")
+    private String tenantIdentityNumber;
+
+    @Column(name = "cccd_front_key")
+    private String cccdFrontKey;
+
+    @Column(name = "cccd_back_key")
+    private String cccdBackKey;
+
+    @Column(name = "terminated_at")
+    private Instant terminatedAt;
+
+    @Column(name = "terminated_reason")
+    private String terminatedReason;
+
+    @Column(name = "terminated_by")
+    private UUID terminatedBy;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EContractStatus status;
@@ -69,7 +101,11 @@ public class EContract implements Serializable {
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
     @CreationTimestamp
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private Instant updatedAt;
 }

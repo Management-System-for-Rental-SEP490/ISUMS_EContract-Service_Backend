@@ -1,33 +1,38 @@
 package com.isums.contractservice.infrastructures.abstracts;
 
-
 import com.isums.contractservice.domains.dtos.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.UUID;
 
 public interface EContractService {
-    public EContractDto createDraftEContract(UUID actorId, String jwtToken, CreateEContractRequest req);
 
-    public EContractDto getEContractById(UUID id);
+    EContractDto createDraftEContract(UUID actorId, String jwtToken, CreateEContractRequest req);
 
-    public List<EContractDto> getAllEContracts();
+    EContractDto getEContractById(UUID id);
 
-    public EContractDto updateEContractById(UUID id, UpdateEContractRequest req);
+    List<EContractDto> getAllEContracts();
 
-    public VnptDocumentDto readyEContract(UUID contractId);
+    EContractDto updateEContractById(UUID id, UpdateEContractRequest req);
 
-    public void confirmEContract(UUID contractId, String keycloakId, String jwtToken);
+    boolean hasCccd(UUID contractId);
 
-    public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode);
+    void uploadCccd(UUID contractId, MultipartFile frontImage, MultipartFile backImage);
 
-//    public VnptDocumentDto readyEContract(ReadyEContractRequest req);
+    VnptDocumentDto readyEContract(UUID contractId);
 
-    public EContractDto getEContractOutSystem(String processCode);
+    void confirmEContract(UUID contractId, String keycloakId, String jwtToken);
 
-    public ProcessResponse signProcess(VnptProcessDto process);
+    ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode);
 
-    public ProcessResponse signProcessForAdmin(VnptProcessDto process);
+    EContractDto getEContractOutSystem(String processCode);
 
-    public VnptDocumentDto getVnptEContractByDocumentId(String documentId);
+    ProcessResponse signProcess(VnptProcessDto process);
+
+    ProcessResponse signProcessForAdmin(VnptProcessDto process);
+
+    VnptDocumentDto getVnptEContractByDocumentId(String documentId);
+
+    void terminateContract(UUID contractId, String reason, UUID terminatedBy);
 }

@@ -3,7 +3,7 @@ package com.isums.contractservice.infrastructures.clients;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
-import com.isums.contractservice.configurations.VnptEcontractProperties;
+import com.isums.contractservice.domains.dtos.VnptEcontractProperties;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.Cacheable;
