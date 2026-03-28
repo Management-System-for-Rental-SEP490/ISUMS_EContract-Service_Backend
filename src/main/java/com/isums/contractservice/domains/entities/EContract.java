@@ -98,6 +98,12 @@ public class EContract implements Serializable {
     @Column(nullable = false)
     private EContractStatus status;
 
+    @Column(name = "tenant_name")
+    private String tenantName;
+
+    @Column(name = "cccd_verified_at")
+    private Instant cccdVerifiedAt;
+
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;
 

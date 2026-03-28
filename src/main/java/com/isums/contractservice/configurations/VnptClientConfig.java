@@ -1,6 +1,5 @@
 package com.isums.contractservice.configurations;
 
-import com.isums.contractservice.domains.dtos.VnptEcontractProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,6 +16,6 @@ public class VnptClientConfig {
 
     @Bean
     public RestClient vnptRestClient(RestClient.Builder builder, VnptEcontractProperties pros) {
-        return builder.baseUrl(pros.getBaseUrl()).build();
+        return builder.baseUrl(pros.getGatewayBaseUrl()).build();
     }
 }

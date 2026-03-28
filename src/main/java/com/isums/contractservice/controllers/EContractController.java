@@ -24,7 +24,7 @@ public class EContractController {
     private final VnptEContractClient client;
 
     @PostMapping
-    @PreAuthorize("hasRole('LANDLORD')")
+    @PreAuthorize("hasAnyRole('MANAGER','LANDLORD')")
     public ApiResponse<EContractDto> createDocument(@AuthenticationPrincipal Jwt jwt, @RequestBody @Valid CreateEContractRequest req) {
         UUID actorId = extractActorId(jwt);
         return ApiResponses.created(
@@ -33,37 +33,37 @@ public class EContractController {
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('MANAGER','LANDLORD')")
     public ApiResponse<EContractDto> getEContractById(@PathVariable UUID id) {
         return ApiResponses.ok(contractService.getEContractById(id),
                 "Success to get e-contract");
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyRole('MANAGER','LANDLORD')")
     public ApiResponse<List<EContractDto>> getAllEContracts() {
         return ApiResponses.ok(contractService.getAllEContracts(), "Success to get e-contracts");
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('LANDLORD')")
+    @PreAuthorize("hasAnyRole('MANAGER','LANDLORD')")
     public ApiResponse<EContractDto> updateEContractById(@PathVariable UUID id, @Valid @RequestBody UpdateEContractRequest req) {
         return ApiResponses.ok(contractService.updateEContractById(id, req), "Success to update e-contract");
     }
 
     @GetMapping("/{id}/cccd-status")
-    @PreAuthorize("hasRole('LANDLORD')")
     public ApiResponse<Boolean> checkCccd(@PathVariable UUID id) {
         return ApiResponses.ok(contractService.hasCccd(id), "CCCD status checked");
     }
 
     @PutMapping(value = "/{id}/cccd", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    @PreAuthorize("hasRole('LANDLORD')")
-    public ApiResponse<Void> uploadCccd(@PathVariable UUID id, @RequestParam("frontImage") MultipartFile frontImage, @RequestParam("backImage") MultipartFile backImage) {
+    public ApiResponse<Void> uploadCccd(@PathVariable String id, @RequestParam("frontImage") MultipartFile frontImage, @RequestParam("backImage") MultipartFile backImage) {
         contractService.uploadCccd(id, frontImage, backImage);
         return ApiResponses.ok(null, "CCCD uploaded successfully");
     }
 
     @PutMapping("/ready/{id}")
-    @PreAuthorize("hasRole('LANDLORD')")
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
     public ApiResponse<VnptDocumentDto> readyEContract(@PathVariable UUID id) {
         return ApiResponses.ok(contractService.readyEContract(id),
                 "Success to ready e-contract");

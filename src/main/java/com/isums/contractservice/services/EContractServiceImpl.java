@@ -47,6 +47,7 @@ import org.springframework.web.util.HtmlUtils;
 import software.amazon.awssdk.services.s3.S3Client;
 
 import java.io.*;
+import java.text.Normalizer;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -77,11 +78,41 @@ public class EContractServiceImpl implements EContractService {
     @Value("${app.s3.bucket}")
     private String bucket;
 
-    @Value("${ocr.service.url:http://localhost:9000}")
+    @Value("${ocr.service.url}")
     private String ocrServiceUrl;
 
     private final DateTimeFormatter dayMonthYear =
             DateTimeFormatter.ofPattern("dd/MM/yyyy").withZone(ZoneOffset.UTC);
+
+
+    private record CccdOcrResult(
+            String identityNumber,
+            String fullName,
+            String dateOfBirth,
+            String gender,
+            String placeOfOrigin,
+            String address,
+            String issueDate,
+            String issuePlace
+    ) {
+        static CccdOcrResult from(JsonNode node) {
+            return new CccdOcrResult(
+                    nullableText(node, "identityNumber"),
+                    nullableText(node, "fullName"),
+                    nullableText(node, "dateOfBirth"),
+                    nullableText(node, "gender"),
+                    nullableText(node, "placeOfOrigin"),
+                    nullableText(node, "address"),
+                    nullableText(node, "issueDate"),
+                    nullableText(node, "issuePlace")
+            );
+        }
+
+        private static String nullableText(JsonNode n, String field) {
+            JsonNode v = n.path(field);
+            return (v.isTextual() && !v.asText().isBlank()) ? v.asText().trim() : null;
+        }
+    }
 
     @Override
     @Transactional
@@ -132,100 +163,50 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
-    public void uploadCccd(UUID contractId,
-                           MultipartFile frontImage,
-                           MultipartFile backImage) {
-        EContract contract = eContractRepository.findById(contractId)
-                .orElseThrow(() -> new NotFoundException("Contract not found: " + contractId));
+    public void uploadCccd(String documentId, MultipartFile frontImage, MultipartFile backImage) {
+        EContract contract = eContractRepository.findByDocumentId(documentId)
+                .orElseThrow(() -> new NotFoundException("Contract not found: " + documentId));
 
-        if (contract.getStatus() != EContractStatus.DRAFT
-                && contract.getStatus() != EContractStatus.READY) {
-            throw new IllegalStateException(
-                    "Cannot upload CCCD in status: " + contract.getStatus());
+        if (contract.getStatus() != EContractStatus.CONFIRM_BY_TENANT) {
+            throw new IllegalStateException("Cannot upload CCCD in status: " + contract.getStatus());
         }
+
+        validateBasic(frontImage, "mặt trước");
+        validateBasic(backImage, "mặt sau");
+
+        CccdOcrResult ocrFront = callOcrFrontAndValidate(
+                frontImage,
+                contract.getTenantIdentityNumber(),
+                contract.getTenantName()
+        );
+
+        validateCccdBack(backImage);
 
         deleteCccdIfExists(contract.getCccdFrontKey());
         deleteCccdIfExists(contract.getCccdBackKey());
 
-        String frontKey = validateAndUpload(
-                frontImage, contractId, "mặt trước",
-                contract.getTenantIdentityNumber());
-        String backKey = validateAndUpload(
-                backImage, contractId, "mặt sau", null);
+        String frontKey = s3Service.uploadCccdImage(frontImage, contract.getId(), "mat-truoc");
+        String backKey = s3Service.uploadCccdImage(backImage, contract.getId(), "mat-sau");
 
         contract.setCccdFrontKey(frontKey);
         contract.setCccdBackKey(backKey);
-        eContractRepository.save(contract);
+        contract.setCccdVerifiedAt(Instant.now());
 
-        log.info("[CCCD] Uploaded contractId={}", contractId);
+        eContractRepository.save(contract);
+        log.info("[CCCD] Uploaded & verified contractId={} id={} name={}",
+                contract.getId(),
+                ocrFront != null ? ocrFront.identityNumber() : "skipped",
+                ocrFront != null ? ocrFront.fullName() : "skipped");
     }
 
     @Override
+    @Cacheable(value = "allEContracts")
     public VnptDocumentDto readyEContract(UUID contractId) {
         try {
             EContract eContract = eContractRepository.findById(contractId)
                     .orElseThrow(() -> new NotFoundException("Contract not found: " + contractId));
 
             return readyEContract(eContract);
-        } catch (Exception ex) {
-            log.error("readyEContract failed", ex);
-            throw new IllegalStateException("readyEContract failed: " + ex.getMessage());
-        }
-    }
-
-    private VnptDocumentDto readyEContract(EContract eContract) {
-        try {
-
-            byte[] pdfBytes = renderHtmlToPdf(eContract.getHtml());
-
-            if (eContract.getCccdFrontKey() != null && eContract.getCccdBackKey() != null) {
-                byte[] frontBytes = s3Service.downloadBytes(eContract.getCccdFrontKey());
-                byte[] backBytes  = s3Service.downloadBytes(eContract.getCccdBackKey());
-                pdfBytes = s3Service.appendCccdPage(pdfBytes, frontBytes, backBytes);
-                log.info("[Contract] Appended CCCD page contractId={}", eContract.getId());
-            } else {
-                log.info("[Contract] No CCCD found, skipping append contractId={}", eContract.getId());
-            }
-
-            Map<String, AnchorBoxVnpt> anchors =
-                    findAnchors(pdfBytes, List.of("SIGN_A", "SIGN_B"));
-            VnptPosition positionA = getVnptEContractPosition(
-                    pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 35, 20, 60);
-            VnptPosition positionB = getVnptEContractPosition(
-                    pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 35, 20, 60);
-
-            String No = "EC_" + Instant.now().getEpochSecond();
-            FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No + ".pdf");
-            CreateDocumentDto createDocumentDto = new CreateDocumentDto(
-                    fileInfoDto, "Rental EContract", "Rental EContract", 3059, 3110, No);
-
-            String tokenVnpt = econtractClient.getToken();
-            VnptResult<VnptDocumentDto> result =
-                    econtractClient.createDocument(tokenVnpt, createDocumentDto);
-
-            if (result == null || result.getData() == null) {
-                String errorMsg = result != null ? result.getMessage() : "Unknown error";
-                throw new IllegalStateException("Failed to create document on VNPT: " + errorMsg);
-            }
-
-            String documentId = result.getData().id();
-
-            eContract.getStatus().validateTransition(EContractStatus.READY);
-            eContract.setStatus(EContractStatus.READY);
-            eContract.setDocumentId(documentId);
-            eContract.setDocumentNo(result.getData().no());
-            eContractRepository.save(eContract);
-
-            String vnptToken = vnptEContractClient.getToken();
-            String userCodeSecond = eContract.getUserId().toString();
-            String userCodeFirst = "hoangtuzami";
-
-            updateProcess(vnptToken, documentId,
-                    userCodeFirst, userCodeSecond,
-                    positionA.pos(), positionB.pos(), positionA.pageSign());
-
-            return econtractClient.sendProcess(vnptToken, documentId).getData();
-
         } catch (Exception ex) {
             log.error("readyEContract failed", ex);
             throw new IllegalStateException("readyEContract failed: " + ex.getMessage());
@@ -261,7 +242,6 @@ public class EContractServiceImpl implements EContractService {
                     .findByDocumentId(processLogin.documentId())
                     .orElseThrow(() -> new NotFoundException("EContract not found"));
 
-            eContract.getStatus().validateTransition(EContractStatus.CONFIRM_BY_TENANT);
             eContract.setStatus(EContractStatus.CONFIRM_BY_TENANT);
             eContractRepository.save(eContract);
 
@@ -274,12 +254,10 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
-
     @Override
     @Caching(evict = {
             @CacheEvict(cacheNames = "allEContracts", allEntries = true),
-            @CacheEvict(cacheNames = "vnptProcessCode",
-                    key = "#process.processCode", allEntries = true)
+            @CacheEvict(cacheNames = "vnptProcessCode", key = "#process.processCode", allEntries = true)
     })
     public ProcessResponse signProcess(VnptProcessDto process) {
         try {
@@ -288,17 +266,13 @@ public class EContractServiceImpl implements EContractService {
             if (processResponse == null)
                 throw new IllegalStateException("VNPT signProcess returned null");
             if (processResponse.getData() == null)
-                throw new IllegalStateException(
-                        "VNPT signProcess failed: " + processResponse.getMessage());
+                throw new IllegalStateException("VNPT signProcess failed: " + processResponse.getMessage());
 
-            if (processResponse.getSuccess()
-                    && processResponse.getData().id() != null) {
-
+            if (processResponse.getSuccess() && processResponse.getData().id() != null) {
                 var eContract = eContractRepository
                         .findByDocumentId(String.valueOf(processResponse.getData().id()))
                         .orElseThrow(() -> new NotFoundException(
-                                "EContract not found for documentId: "
-                                        + processResponse.getData().id()));
+                                "EContract not found for documentId: " + processResponse.getData().id()));
 
                 eContract.getStatus().validateTransition(EContractStatus.COMPLETED);
                 eContract.setStatus(EContractStatus.COMPLETED);
@@ -306,7 +280,6 @@ public class EContractServiceImpl implements EContractService {
 
                 log.info("[EContract] COMPLETED contractId={}", eContract.getId());
 
-                // Kích hoạt tài khoản + map vào nhà
                 activateTenantIfNeeded(eContract.getUserId());
                 mapUserToHouse(eContract.getUserId(), eContract.getHouseId());
             }
@@ -322,24 +295,19 @@ public class EContractServiceImpl implements EContractService {
     @Override
     public ProcessResponse signProcessForAdmin(VnptProcessDto process) {
         try {
-            VnptProcessDto updatedProcess =
-                    process.withToken(vnptEContractClient.getToken());
+            VnptProcessDto updatedProcess = process.withToken(vnptEContractClient.getToken());
             var processResponse = vnptEContractClient.signProcess(updatedProcess);
 
             if (processResponse == null)
                 throw new IllegalStateException("VNPT signProcess returned null");
             if (processResponse.getData() == null)
-                throw new IllegalStateException(
-                        "VNPT signProcess failed: " + processResponse.getMessage());
+                throw new IllegalStateException("VNPT signProcess failed: " + processResponse.getMessage());
 
-            if (processResponse.getSuccess()
-                    && processResponse.getData().id() != null) {
-
+            if (processResponse.getSuccess() && processResponse.getData().id() != null) {
                 var eContract = eContractRepository
                         .findByDocumentId(String.valueOf(processResponse.getData().id()))
                         .orElseThrow(() -> new NotFoundException(
-                                "EContract not found for documentId: "
-                                        + processResponse.getData().id()));
+                                "EContract not found for documentId: " + processResponse.getData().id()));
 
                 eContract.getStatus().validateTransition(EContractStatus.IN_PROGRESS);
                 eContract.setStatus(EContractStatus.IN_PROGRESS);
@@ -406,8 +374,7 @@ public class EContractServiceImpl implements EContractService {
 
             if (econtract.getStatus() != EContractStatus.DRAFT
                     && econtract.getStatus() != EContractStatus.READY) {
-                throw new IllegalStateException(
-                        "Cannot update contract in status: " + econtract.getStatus());
+                throw new IllegalStateException("Cannot update contract in status: " + econtract.getStatus());
             }
 
             eContractMapper.patch(req, econtract);
@@ -444,6 +411,187 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
+    private CccdOcrResult callOcrFrontAndValidate(MultipartFile file,
+                                                  String expectedId,
+                                                  String expectedName) {
+        try {
+            JsonNode node = callOcrService(file, "/ocr/cccd");
+            CccdOcrResult result = CccdOcrResult.from(node);
+
+            boolean isFront = node.path("isFrontSide").asBoolean(false);
+            if (!isFront) {
+                int score = node.path("frontScore").asInt(0);
+                throw new IllegalArgumentException(
+                        "Ảnh mặt trước CCCD không hợp lệ (score=" + score + "). "
+                                + "Vui lòng chụp đúng mặt trước của thẻ căn cước.");
+            }
+
+            if (result.identityNumber() == null) {
+                throw new IllegalArgumentException(
+                        "Không tìm thấy số CCCD trong ảnh mặt trước. Vui lòng chụp lại rõ hơn.");
+            }
+            if (expectedId != null && !expectedId.isBlank()
+                    && !result.identityNumber().equals(expectedId)) {
+                throw new IllegalArgumentException(
+                        "Số CCCD trong ảnh (" + result.identityNumber() + ") "
+                                + "không khớp với hợp đồng (" + expectedId + ").");
+            }
+
+            if (result.fullName() != null && !result.fullName().isBlank()) {
+                if (expectedName != null && !expectedName.isBlank()) {
+                    String normOcr = normalize(result.fullName());
+                    String normExpected = normalize(expectedName);
+                    if (!normOcr.equals(normExpected)) {
+                        throw new IllegalArgumentException(
+                                "Tên trong ảnh CCCD (" + result.fullName() + ") "
+                                        + "không khớp với hợp đồng (" + expectedName + ").");
+                    }
+                }
+            } else {
+                // OCR không đọc được tên → chỉ warn, không block
+                log.warn("[CCCD] Không đọc được tên mặt trước, bỏ qua kiểm tra tên. id={}",
+                        result.identityNumber());
+            }
+
+            log.info("[CCCD] Front OK id={} name={}", result.identityNumber(), result.fullName());
+            return result;
+
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[CCCD] Front OCR service lỗi, bỏ qua validate: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private void validateCccdBack(MultipartFile file) {
+        try {
+            JsonNode node = callOcrService(file, "/ocr/cccd/back");
+
+            boolean isReadable = node.path("isReadable").asBoolean(true);
+            if (!isReadable) {
+                throw new IllegalArgumentException(
+                        "Ảnh mặt sau CCCD không rõ nét. Vui lòng chụp lại.");
+            }
+
+            boolean isBack = node.path("isBackSide").asBoolean(false);
+            if (!isBack) {
+                int score = node.path("backScore").asInt(0);
+                throw new IllegalArgumentException(
+                        "Ảnh mặt sau CCCD không hợp lệ (score=" + score + "). "
+                                + "Vui lòng chụp đúng mặt sau của thẻ căn cước.");
+            }
+
+            String issueDate = node.path("issueDate").asText(null);
+            log.info("[CCCD] Back OK issueDate={}", issueDate);
+
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[CCCD] Back OCR service lỗi, bỏ qua validate: {}", e.getMessage());
+        }
+    }
+
+    private JsonNode callOcrService(MultipartFile file, String path) throws Exception {
+        ByteArrayResource resource = new ByteArrayResource(file.getBytes()) {
+            @Override
+            public String getFilename() {
+                return file.getOriginalFilename();
+            }
+        };
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("image", resource);
+
+        String raw = RestClient.create().post()
+                .uri(ocrServiceUrl + path)
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(body)
+                .retrieve()
+                .body(String.class);
+
+        return mapper.readTree(raw);
+    }
+
+    private String normalize(String s) {
+        if (s == null) return "";
+        String lower = s.toLowerCase();
+        String nfd = Normalizer.normalize(lower, Normalizer.Form.NFD);
+        return nfd.replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+                .replaceAll("[^a-z0-9\\s]", "")
+                .replaceAll("\\s+", " ")
+                .trim();
+    }
+
+    private void validateBasic(MultipartFile file, String side) {
+        if (file == null || file.isEmpty())
+            throw new IllegalArgumentException("Ảnh " + side + " không được để trống");
+
+        String mime = file.getContentType();
+        if (mime == null || !mime.startsWith("image/"))
+            throw new IllegalArgumentException("File " + side + " phải là ảnh (jpg, png, ...)");
+
+        if (file.getSize() < 50 * 1024)
+            throw new IllegalArgumentException("Ảnh " + side + " quá nhỏ, vui lòng chụp lại rõ hơn");
+
+        if (file.getSize() > 10 * 1024 * 1024)
+            throw new IllegalArgumentException("Ảnh " + side + " quá lớn (tối đa 10MB)");
+    }
+
+    private void deleteCccdIfExists(String key) {
+        if (key == null) return;
+        try {
+            s3Client.deleteObject(b -> b.bucket(bucket).key(key));
+        } catch (Exception e) {
+            log.warn("[CCCD] Delete old key failed key={}: {}", key, e.getMessage());
+        }
+    }
+
+    private VnptDocumentDto readyEContract(EContract eContract) {
+        try {
+            byte[] pdfBytes = renderHtmlToPdf(eContract.getHtml());
+
+            Map<String, AnchorBoxVnpt> anchors = findAnchors(pdfBytes, List.of("SIGN_A", "SIGN_B"));
+            VnptPosition positionA = getVnptEContractPosition(
+                    pdfBytes, anchors.get("SIGN_A"), 170, 90, 60, 18, -28, 35, 20, 60);
+            VnptPosition positionB = getVnptEContractPosition(
+                    pdfBytes, anchors.get("SIGN_B"), 170, 90, 60, 18, 0, 35, 20, 60);
+
+            String No = "EC_" + Instant.now().getEpochSecond();
+            FileInfoDto fileInfoDto = new FileInfoDto(null, pdfBytes, No + ".pdf");
+            CreateDocumentDto createDocumentDto = new CreateDocumentDto(
+                    fileInfoDto, "Rental EContract", "Rental EContract", 3059, 3110, No);
+
+            String tokenVnpt = econtractClient.getToken();
+            VnptResult<VnptDocumentDto> result = econtractClient.createDocument(tokenVnpt, createDocumentDto);
+
+            if (result == null || result.getData() == null) {
+                String errorMsg = result != null ? result.getMessage() : "Unknown error";
+                throw new IllegalStateException("Failed to create document on VNPT: " + errorMsg);
+            }
+
+            String documentId = result.getData().id();
+
+            eContract.getStatus().validateTransition(EContractStatus.READY);
+            eContract.setStatus(EContractStatus.READY);
+            eContract.setDocumentId(documentId);
+            eContract.setDocumentNo(result.getData().no());
+            eContractRepository.save(eContract);
+
+            String vnptToken = vnptEContractClient.getToken();
+            String userCodeSecond = eContract.getUserId().toString();
+            String userCodeFirst = "hoangtuzami";
+
+            updateProcess(vnptToken, documentId,
+                    userCodeFirst, userCodeSecond,
+                    positionA.pos(), positionB.pos(), positionA.pageSign());
+
+            return econtractClient.sendProcess(vnptToken, documentId).getData();
+
+        } catch (Exception ex) {
+            log.error("readyEContract failed", ex);
+            throw new IllegalStateException("readyEContract failed: " + ex.getMessage());
+        }
+    }
 
     private EContractDto createDocument(UUID actorId, UUID primaryTenantUserId,
                                         CreateEContractRequest req,
@@ -453,15 +601,15 @@ public class EContractServiceImpl implements EContractService {
 
         LandlordProfile landlord = landlordProfileRepository.findByUserId(actorId)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Landlord chưa cập nhật thông tin pháp lý. " +
-                                "Vui lòng cập nhật tại PUT /api/landlord-profiles/me trước khi tạo hợp đồng."));
+                        "Landlord chưa cập nhật thông tin pháp lý. "
+                                + "Vui lòng cập nhật tại PUT /api/landlord-profiles/me trước khi tạo hợp đồng."));
 
         Map<String, Object> data = new HashMap<>();
 
         data.put("LANDLORD_NAME", landlord.getFullName());
         data.put("LANDLORD_ID", landlord.getIdentityNumber());
-        data.put("LANDLORD_ID_ISSUE", nvl(landlord.getIdentityIssueDate(), "")
-                + " " + nvl(landlord.getIdentityIssuePlace(), ""));
+        data.put("LANDLORD_ID_ISSUE",
+                nvl(landlord.getIdentityIssueDate(), "") + " " + nvl(landlord.getIdentityIssuePlace(), ""));
         data.put("LANDLORD_ADDRESS", nvl(landlord.getAddress(), ""));
         data.put("LANDLORD_PHONE", nvl(landlord.getPhoneNumber(), ""));
         data.put("LANDLORD_EMAIL", landlord.getEmail());
@@ -516,8 +664,7 @@ public class EContractServiceImpl implements EContractService {
         data.put("EFFECTIVE_DATE", dayMonthYear.format(Instant.now()));
 
         String html = placeholderEngine(template.getContentHtml(), data);
-        String contractName = "EContract_" + req.name().trim()
-                + "_" + Instant.now().getEpochSecond();
+        String contractName = "EContract_" + req.name().trim() + "_" + Instant.now().getEpochSecond();
 
         EContract econtract = EContract.builder()
                 .userId(primaryTenantUserId)
@@ -535,6 +682,7 @@ public class EContractServiceImpl implements EContractService {
                 .depositRefundDays(req.depositRefundDaysOrDefault())
                 .handoverDate(req.handoverDate())
                 .tenantIdentityNumber(req.identityNumber())
+                .tenantName(req.name())
                 .createdBy(actorId)
                 .build();
 
@@ -545,149 +693,51 @@ public class EContractServiceImpl implements EContractService {
         return eContractMapper.contractToDto(econtract);
     }
 
-    private String validateAndUpload(MultipartFile file, UUID contractId,
-                                     String side, String expectedIdentityNumber) {
-        validateBasic(file, side);
-        validateContainsCccd(file, side, expectedIdentityNumber);
-        return s3Service.uploadCccdImage(file, contractId, side);
-    }
-
-    private void validateBasic(MultipartFile file, String side) {
-        if (file == null || file.isEmpty())
-            throw new IllegalArgumentException("Ảnh " + side + " không được để trống");
-
-        String mime = file.getContentType();
-        if (mime == null || !mime.startsWith("image/"))
-            throw new IllegalArgumentException(
-                    "File " + side + " phải là ảnh (jpg, png, ...)");
-
-        if (file.getSize() < 50 * 1024)
-            throw new IllegalArgumentException(
-                    "Ảnh " + side + " quá nhỏ, vui lòng chụp lại rõ hơn");
-
-        if (file.getSize() > 10 * 1024 * 1024)
-            throw new IllegalArgumentException(
-                    "Ảnh " + side + " quá lớn (tối đa 10MB)");
-    }
-
-    private void validateContainsCccd(MultipartFile file, String side,
-                                      String expectedIdentityNumber) {
-        try {
-            ByteArrayResource resource = new ByteArrayResource(file.getBytes()) {
-                @Override
-                public String getFilename() {
-                    return file.getOriginalFilename();
-                }
-            };
-            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            body.add("image", resource);
-
-            String raw = RestClient.create().post()
-                    .uri(ocrServiceUrl + "/ocr/cccd")
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(body)
-                    .retrieve()
-                    .body(String.class);
-
-            JsonNode result = mapper.readTree(raw);
-            String identityNumber = result.path("identityNumber").asText(null);
-
-            if (identityNumber == null || identityNumber.isBlank()) {
-                throw new IllegalArgumentException("Không tìm thấy số CCCD trong ảnh " + side + ". Vui lòng chụp lại rõ hơn.");
-            }
-
-            if (expectedIdentityNumber != null
-                    && !expectedIdentityNumber.isBlank()
-                    && !identityNumber.equals(expectedIdentityNumber)) {
-                throw new IllegalArgumentException("Số CCCD trong ảnh (" + identityNumber + ") "
-                        + "không khớp với thông tin hợp đồng (" + expectedIdentityNumber + "). Vui lòng kiểm tra lại.");
-            }
-
-            log.info("[CCCD] Validated {} identityNumber={}", side, identityNumber);
-
-        } catch (IllegalArgumentException e) {
-            throw e;
-        } catch (Exception e) {
-            log.warn("[CCCD] OCR validation skipped for {}: {}", side, e.getMessage());
-        }
-    }
-
-    private void deleteCccdIfExists(String key) {
-        if (key == null) return;
-        try {
-            s3Client.deleteObject(b -> b.bucket(bucket).key(key));
-        } catch (Exception e) {
-            log.warn("[CCCD] Delete old key failed key={}: {}", key, e.getMessage());
-        }
-    }
-
-    // =========================================================
-// Private — activateTenantIfNeeded
-// =========================================================
-
     private void activateTenantIfNeeded(UUID userId) {
         try {
             UserResponse user = userGrpcClient.getUserById(userId.toString());
-
             if (user == null) {
                 log.warn("activateTenant: user not found userId={}", userId);
                 return;
             }
-
             if (user.getIsEnabled()) {
-                log.info("activateTenant: user already enabled userId={} → skip", userId);
+                log.info("activateTenant: already enabled userId={} → skip", userId);
                 return;
             }
 
             String tempPassword = keycloakAdminService.activateUser(user.getKeycloakId());
-
-            UserActivatedEvent event = UserActivatedEvent.builder()
+            kafkaTemplate.send("user-activated-topic", UserActivatedEvent.builder()
                     .userId(userId)
                     .email(user.getEmail())
                     .name(user.getName())
                     .tempPassword(tempPassword)
-                    .build();
+                    .build());
 
-            kafkaTemplate.send("user-activated-topic", event);
             log.info("activateTenant: sent activation event userId={} email={}", userId, user.getEmail());
-
         } catch (Exception e) {
             log.error("activateTenant failed userId={} — contract still completed", userId, e);
         }
     }
 
-// =========================================================
-// Private — mapUserToHouse
-// =========================================================
-
     private void mapUserToHouse(UUID userId, UUID houseId) {
         try {
-            MapUserToHouseEvent event = MapUserToHouseEvent.builder()
+            kafkaTemplate.send("map-user-to-house-topic", MapUserToHouseEvent.builder()
                     .userId(userId)
                     .houseId(houseId)
-                    .build();
-
-            kafkaTemplate.send("map-user-to-house-topic", event);
-            log.info("mapUserToHouse: sent mapUserToHouseEvent userId={} houseId={}", userId, houseId);
+                    .build());
+            log.info("mapUserToHouse: sent event userId={} houseId={}", userId, houseId);
         } catch (Exception e) {
             log.error("mapUserToHouse failed userId={} houseId={}", userId, houseId, e);
         }
     }
 
-// =========================================================
-// Private — createVnptUser
-// =========================================================
-
     private void createVnptUser(String token, UUID primaryTenantUserId,
                                 CreateEContractRequest req) {
         VnptUserUpsert vnptUser = getVnptUserUpsert(primaryTenantUserId, req);
-
-        VnptResult<List<VnptUserDto>> userResult =
-                econtractClient.CreateOrUpdateUser(token, vnptUser);
+        VnptResult<List<VnptUserDto>> userResult = econtractClient.CreateOrUpdateUser(token, vnptUser);
 
         if (userResult == null || userResult.getData() == null) {
-            String errorMsg = userResult != null
-                    ? userResult.getMessage() : "Unknown error";
+            String errorMsg = userResult != null ? userResult.getMessage() : "Unknown error";
             log.error("Failed to create user on VNPT: {}", errorMsg);
             throw new IllegalStateException("Failed to create user on VNPT: " + errorMsg);
         }
@@ -695,22 +745,16 @@ public class EContractServiceImpl implements EContractService {
 
     private @NonNull VnptUserUpsert getVnptUserUpsert(UUID primaryTenantUserId,
                                                       CreateEContractRequest req) {
-        List<UUID> roleIds = new ArrayList<>(
-                List.of(UUID.fromString("0aa2afc9-39c5-4652-baec-08ddc28cdda2")));
-
+        List<UUID> roleIds = new ArrayList<>(List.of(UUID.fromString("0aa2afc9-39c5-4652-baec-08ddc28cdda2")));
         List<Integer> departmentIds = new ArrayList<>(List.of(3110));
 
         return new VnptUserUpsert(
                 primaryTenantUserId.toString(),
-                req.email(),
-                req.name(),
-                req.email(),
-                req.phoneNumber(),
+                req.email(), req.name(), req.email(), req.phoneNumber(),
                 1, 0, 2,
                 true, true,
                 1, -1,
-                departmentIds,
-                roleIds
+                departmentIds, roleIds
         );
     }
 
@@ -722,23 +766,20 @@ public class EContractServiceImpl implements EContractService {
                 new ProcessesRequestDTO(1, userCodeFirst, "E", positionA, pageSign),
                 new ProcessesRequestDTO(2, userCodeSecond, "E", positionB, pageSign)
         );
-
-        var request = new VnptUpdateProcessDTO(documentId, true, processes);
-        var result = econtractClient.UpdateProcess(token, request);
+        var result = econtractClient.UpdateProcess(token,
+                new VnptUpdateProcessDTO(documentId, true, processes));
         log.info("updateProcess result: {}", result);
     }
 
     private String placeholderEngine(String template, Map<String, Object> data) {
         final Pattern P = Pattern.compile("\\{\\{\\s*([A-Z0-9_]+)\\s*}}");
-
         Matcher m = P.matcher(template);
         StringBuilder sb = new StringBuilder();
         while (m.find()) {
             String key = m.group(1);
             Object value = data.get(key);
-            if (value == null) {
+            if (value == null)
                 throw new IllegalStateException("Missing placeholder: " + key);
-            }
             m.appendReplacement(sb, Matcher.quoteReplacement(String.valueOf(value)));
         }
         m.appendTail(sb);
@@ -760,34 +801,22 @@ public class EContractServiceImpl implements EContractService {
                 """);
 
         int i = 1;
-        List<AssetItemDto> items = assetGrpcClient.getAssetItemsByHouseId(houseId);
-        for (AssetItemDto item : items) {
+        for (AssetItemDto item : assetGrpcClient.getAssetItemsByHouseId(houseId)) {
             String name = HtmlUtils.htmlEscape(item.getDisplayName());
-            Integer quantity = 1;
-
             sb.append("<tr>")
-                    .append("<td style=\"border: 1px solid #000; padding: 6px; text-align: right;\">")
-                    .append(i).append("</td>")
-                    .append("<td style=\"border: 1px solid #000; padding: 6px;\">")
-                    .append(name).append("</td>")
-                    .append("<td style=\"border: 1px solid #000; padding: 6px; text-align: right;\">")
-                    .append(quantity).append("</td>")
+                    .append("<td style=\"border:1px solid #000;padding:6px;text-align:right;\">").append(i).append("</td>")
+                    .append("<td style=\"border:1px solid #000;padding:6px;\">").append(name).append("</td>")
+                    .append("<td style=\"border:1px solid #000;padding:6px;text-align:right;\">1</td>")
                     .append("</tr>");
             i++;
         }
-
-        sb.append("""
-                </tbody>
-                </table>
-                """);
+        sb.append("</tbody></table>");
         return sb.toString();
     }
 
     private byte[] renderHtmlToPdf(String html) {
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
-            String baseUri = Objects.requireNonNull(
-                    getClass().getResource("/")).toExternalForm();
-
+            String baseUri = Objects.requireNonNull(getClass().getResource("/")).toExternalForm();
             String xhtml = toXhtml(html, baseUri);
 
             PdfRendererBuilder builder = new PdfRendererBuilder();
@@ -803,7 +832,6 @@ public class EContractServiceImpl implements EContractService {
             builder.withHtmlContent(xhtml, baseUri);
             builder.toStream(out);
             builder.run();
-
             return out.toByteArray();
         } catch (Exception e) {
             throw new IllegalStateException("Render PDF failed", e);
@@ -812,35 +840,24 @@ public class EContractServiceImpl implements EContractService {
 
     private String toXhtml(String html, String baseUri) {
         if (html == null) html = "";
-
         Document doc = Jsoup.parse(html, baseUri);
-
-        if (doc.head().selectFirst("meta[charset]") == null) {
+        if (doc.head().selectFirst("meta[charset]") == null)
             doc.head().prependElement("meta").attr("charset", "UTF-8");
-        }
-        if (doc.head().selectFirst("base[href]") == null) {
+        if (doc.head().selectFirst("base[href]") == null)
             doc.head().prependElement("base").attr("href", baseUri);
-        }
-
         doc.outputSettings()
                 .charset("UTF-8")
                 .syntax(Document.OutputSettings.Syntax.xml)
                 .escapeMode(Entities.EscapeMode.xhtml);
-
         return doc.html();
     }
 
     private InputStream cp(String path) {
-        InputStream in = Thread.currentThread()
-                .getContextClassLoader().getResourceAsStream(path);
+        InputStream in = Thread.currentThread().getContextClassLoader().getResourceAsStream(path);
         if (in == null)
             throw new IllegalStateException("Missing classpath resource: " + path);
         return in;
     }
-
-// =========================================================
-// Private — parseProcessLogin
-// =========================================================
 
     private ProcessLoginInfoDto parseProcessLogin(String body) {
         try {
@@ -909,15 +926,8 @@ public class EContractServiceImpl implements EContractService {
             }
 
             return new ProcessLoginInfoDto(
-                    waitingProcessId,
-                    documentId,
-                    documentNo,
-                    processedByUserId,
-                    accessToken,
-                    position,
-                    pageSign,
-                    isOtp
-            );
+                    waitingProcessId, documentId, documentNo,
+                    processedByUserId, accessToken, position, pageSign, isOtp);
 
         } catch (Exception e) {
             throw new IllegalStateException(
@@ -925,30 +935,22 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
-// =========================================================
-// Private — findAnchors + AnchorStripper
-// =========================================================
 
-    private Map<String, AnchorBoxVnpt> findAnchors(byte[] pdfBytes,
-                                                   List<String> anchorTexts) {
+    private Map<String, AnchorBoxVnpt> findAnchors(byte[] pdfBytes, List<String> anchorTexts) {
         Objects.requireNonNull(pdfBytes, "pdfBytes");
         Objects.requireNonNull(anchorTexts, "anchorTexts");
-
         if (anchorTexts.isEmpty()) return Collections.emptyMap();
 
         Set<String> remain = new LinkedHashSet<>(anchorTexts);
         Map<String, AnchorBoxVnpt> found = new HashMap<>();
-
         int maxAnchorLen = anchorTexts.stream().mapToInt(String::length).max().orElse(32);
         int keepTail = Math.max(256, maxAnchorLen * 8);
 
         try (PDDocument doc = Loader.loadPDF(pdfBytes)) {
             int totalPages = doc.getNumberOfPages();
-
             for (int pageIdx = 0; pageIdx < totalPages && !remain.isEmpty(); pageIdx++) {
                 PDPage page = doc.getPage(pageIdx);
-                PDRectangle box = page.getCropBox() != null
-                        ? page.getCropBox() : page.getMediaBox();
+                PDRectangle box = page.getCropBox() != null ? page.getCropBox() : page.getMediaBox();
                 float pageHeight = box.getHeight();
 
                 AnchorStripper stripper = new AnchorStripper(
@@ -966,7 +968,6 @@ public class EContractServiceImpl implements EContractService {
                 throw new IllegalStateException("Anchors not found in PDF: " + remain);
 
             return found;
-
         } catch (IOException e) {
             throw new IllegalStateException("Failed to parse PDF for anchors", e);
         }
@@ -978,13 +979,11 @@ public class EContractServiceImpl implements EContractService {
         private final float pageHeight;
         private final int pageNo1Based;
         private final int keepTail;
-
         private final StringBuilder bufText = new StringBuilder(512);
         private final ArrayList<TextPosition> bufPos = new ArrayList<>(512);
 
         AnchorStripper(Set<String> remain, Map<String, AnchorBoxVnpt> found,
-                       float pageHeight, int pageNo1Based, int keepTail)
-                throws IOException {
+                       float pageHeight, int pageNo1Based, int keepTail) throws IOException {
             super();
             this.remain = remain;
             this.found = found;
@@ -994,8 +993,7 @@ public class EContractServiceImpl implements EContractService {
         }
 
         @Override
-        protected void writeString(String text,
-                                   List<TextPosition> positions) throws IOException {
+        protected void writeString(String text, List<TextPosition> positions) throws IOException {
             if (remain.isEmpty()) return;
 
             bufText.append(text);
@@ -1003,9 +1001,8 @@ public class EContractServiceImpl implements EContractService {
 
             if (bufText.length() > keepTail * 2) {
                 bufText.delete(0, bufText.length() - keepTail);
-                if (bufPos.size() > keepTail) {
+                if (bufPos.size() > keepTail)
                     bufPos.subList(0, bufPos.size() - keepTail).clear();
-                }
             }
 
             String buf = bufText.toString();
@@ -1015,58 +1012,47 @@ public class EContractServiceImpl implements EContractService {
 
                 int startInBuf = buf.length() - bufPos.size();
                 int posIdx = idx - startInBuf;
-
                 if (posIdx < 0 || posIdx >= bufPos.size()) continue;
 
                 List<TextPosition> anchorPos =
-                        bufPos.subList(posIdx,
-                                Math.min(posIdx + anchor.length(), bufPos.size()));
-
+                        bufPos.subList(posIdx, Math.min(posIdx + anchor.length(), bufPos.size()));
                 if (anchorPos.isEmpty()) continue;
 
                 float xMin = Float.MAX_VALUE;
                 float yMaxUL = 0f;
-
                 for (TextPosition tp : anchorPos) {
                     float x = tp.getXDirAdj();
                     if (x < xMin) xMin = x;
-
                     float y = tp.getYDirAdj();
                     float h = tp.getHeightDir();
                     if (y + h > yMaxUL) yMaxUL = y + h;
                 }
 
-                double pdfLeft = xMin;
-                double pdfBottom = pageHeight - yMaxUL;
-
-                found.put(anchor, new AnchorBoxVnpt(pageNo1Based, pdfLeft, pdfBottom));
+                found.put(anchor, new AnchorBoxVnpt(pageNo1Based, xMin, pageHeight - yMaxUL));
             }
         }
     }
 
-    public VnptPosition getVnptEContractPosition(byte[] pdfBytes, AnchorBoxVnpt anchor, double width, double height,
-                                                 double offsetY, double margin, double xAdjust, double yAdjust,
+    public VnptPosition getVnptEContractPosition(byte[] pdfBytes, AnchorBoxVnpt anchor,
+                                                 double width, double height,
+                                                 double offsetY, double margin,
+                                                 double xAdjust, double yAdjust,
                                                  double extraSafeSpace, double topPadding) {
-
         Objects.requireNonNull(pdfBytes, "pdfBytes must not be null");
         Objects.requireNonNull(anchor, "anchor must not be null");
 
-        if (anchor.page() <= 0)
-            throw new IllegalArgumentException("anchor.page must be 1-based and > 0");
-        if (width <= 0 || height <= 0)
-            throw new IllegalArgumentException("width/height must be > 0");
-        if (margin < 0)
-            throw new IllegalArgumentException("margin must be >= 0");
+        if (anchor.page() <= 0) throw new IllegalArgumentException("anchor.page must be > 0");
+        if (width <= 0 || height <= 0) throw new IllegalArgumentException("width/height must be > 0");
+        if (margin < 0) throw new IllegalArgumentException("margin must be >= 0");
 
         try (PDDocument doc = Loader.loadPDF(pdfBytes)) {
             int lastPage = doc.getNumberOfPages();
             if (anchor.page() > lastPage)
-                throw new IllegalArgumentException("anchor.page out of range: " + anchor.page() + ", lastPage=" + lastPage);
+                throw new IllegalArgumentException(
+                        "anchor.page out of range: " + anchor.page() + ", lastPage=" + lastPage);
 
             PDPage page = doc.getPage(anchor.page() - 1);
-            PDRectangle box = page.getCropBox() != null
-                    ? page.getCropBox() : page.getMediaBox();
-
+            PDRectangle box = page.getCropBox() != null ? page.getCropBox() : page.getMediaBox();
             double pw = box.getWidth();
             double ph = box.getHeight();
 
@@ -1086,15 +1072,12 @@ public class EContractServiceImpl implements EContractService {
                     double lly = clamp(nph - margin - height - topPadding + yAdjust,
                             margin, nph - margin - height);
 
-                    return new VnptPosition(buildPos(llx, lly, width, height),
-                            anchor.page() + 1);
+                    return new VnptPosition(buildPos(llx, lly, width, height), anchor.page() + 1);
                 }
             }
 
             double candidateLlx = clamp(anchor.left() + xAdjust, margin, pw - margin - width);
-            return new VnptPosition(
-                    buildPos(candidateLlx, margin, width, height),
-                    anchor.page());
+            return new VnptPosition(buildPos(candidateLlx, margin, width, height), anchor.page());
 
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read PDF bytes", e);
