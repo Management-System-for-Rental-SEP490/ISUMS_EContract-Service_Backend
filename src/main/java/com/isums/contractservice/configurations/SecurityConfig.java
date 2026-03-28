@@ -34,7 +34,10 @@ public class SecurityConfig {
                                 "/api/econtracts/processCode",
                                 "/api/econtracts/ready",
                                 "/api/econtracts/outsystem",
-                                "/api/econtracts/sign"
+                                "/api/econtracts/sign",
+                                "/api/econtracts/*/cccd",
+                                "/api/econtracts/*/cccd-status"
+
                         ).permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated()

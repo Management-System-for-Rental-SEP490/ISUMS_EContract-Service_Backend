@@ -18,7 +18,7 @@ public interface EContractService {
 
     boolean hasCccd(UUID contractId);
 
-    void uploadCccd(UUID contractId, MultipartFile frontImage, MultipartFile backImage);
+    void uploadCccd(String dọcumentId, MultipartFile frontImage, MultipartFile backImage);
 
     VnptDocumentDto readyEContract(UUID contractId);
 

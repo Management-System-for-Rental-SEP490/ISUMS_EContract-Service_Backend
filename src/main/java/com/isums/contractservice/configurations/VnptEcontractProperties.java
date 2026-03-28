@@ -1,4 +1,4 @@
-package com.isums.contractservice.domains.dtos;
+package com.isums.contractservice.configurations;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -9,4 +9,7 @@ public class VnptEcontractProperties {
     private String baseUrl;
     private String userName;
     private String password;
+
+    private String gatewayBaseUrl;
+    private String gatewayToken;
 }

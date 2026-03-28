@@ -19,14 +19,14 @@ public class LandlordProfileController {
     private final LandlordProfileService service;
 
     @GetMapping("/me")
-    @PreAuthorize("hasRole('LANDLORD')")
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
     public ApiResponse<LandlordProfileDto> getMe(@AuthenticationPrincipal Jwt jwt) {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ApiResponses.ok(service.getByUserId(userId), "Success");
     }
 
     @PutMapping("/me")
-    @PreAuthorize("hasRole('LANDLORD')")
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
     public ApiResponse<LandlordProfileDto> upsertMe(@AuthenticationPrincipal Jwt jwt, @RequestBody @Valid UpsertLandlordProfileRequest req) {
         UUID userId = UUID.fromString(jwt.getSubject());
         return ApiResponses.ok(service.upsert(userId, req), "Profile updated successfully");
