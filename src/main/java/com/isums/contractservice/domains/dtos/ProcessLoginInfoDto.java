@@ -10,5 +10,18 @@ public record ProcessLoginInfoDto(
         String accessToken,
         String position,
         Integer pageSign,
-        boolean isOTP
-) {}
+        String pdfUrl
+) {
+    public ProcessLoginInfoDto updatePdfUrl(String newPdfUrl) {
+        return new ProcessLoginInfoDto(
+                this.processId,
+                this.documentId,
+                this.documentNo,
+                this.processedByUserId,
+                this.accessToken,
+                this.position,
+                this.pageSign,
+                newPdfUrl
+        );
+    }
+}

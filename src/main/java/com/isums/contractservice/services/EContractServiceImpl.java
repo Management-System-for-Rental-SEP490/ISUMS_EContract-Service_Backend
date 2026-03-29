@@ -232,8 +232,7 @@ public class EContractServiceImpl implements EContractService {
         EContract c = findById(contractId);
 
         if (c.getSnapshotKey() == null) {
-            throw new IllegalStateException(
-                    "Hợp đồng chưa được tạo PDF. Vui lòng liên hệ chủ nhà.");
+            throw new IllegalStateException("Hợp đồng chưa được tạo PDF. Vui lòng liên hệ chủ nhà.");
         }
 
         return s3.presignedUrl(c.getSnapshotKey(), pdfUrlTtlMinutes);
@@ -359,7 +358,17 @@ public class EContractServiceImpl implements EContractService {
     @Transactional(readOnly = true)
     public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode) {
         try {
-            return parseProcessLogin(vnptClient.getAccessInfoByProcessCode(processCode));
+            EContract contract = contractRepo.findByDocumentNo(processCode).orElseThrow(() -> new NotFoundException("EContract not found"));
+            if (contract.getSnapshotKey() == null) {
+                throw new IllegalStateException("Hợp đồng chưa được tạo PDF.");
+            }
+
+            String pdfUrl = s3.presignedUrl(contract.getSnapshotKey(), pdfUrlTtlMinutes);
+
+            ProcessLoginInfoDto result = parseProcessLogin(vnptClient.getAccessInfoByProcessCode(processCode));
+            result.updatePdfUrl(pdfUrl);
+
+            return result;
         } catch (Exception ex) {
             log.error("getAccessInfoByProcessCode failed processCode={}", processCode, ex);
             throw new IllegalStateException("Lấy thông tin ký thất bại: " + ex.getMessage());
@@ -892,7 +901,7 @@ public class EContractServiceImpl implements EContractService {
                     isOtp = v != null && v.canConvertToInt() && v.asInt() == 7;
                 }
             }
-            return new ProcessLoginInfoDto(waitId, docId, docNo, pBy, token, pos, ps, isOtp);
+            return new ProcessLoginInfoDto(waitId, docId, docNo, pBy, token, pos, ps, null);
         } catch (Exception e) {
             throw new IllegalStateException("Cannot parse VNPT response: " + e.getMessage() + "\nRAW=" + body, e);
         }
