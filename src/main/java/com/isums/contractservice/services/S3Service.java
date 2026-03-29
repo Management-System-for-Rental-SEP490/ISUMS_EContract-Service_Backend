@@ -15,11 +15,22 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
+import javax.imageio.IIOImage;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageWriteParam;
+import javax.imageio.ImageWriter;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.UUID;
 
 @Slf4j
@@ -28,6 +39,7 @@ import java.util.UUID;
 public class S3Service {
 
     private final S3Client s3Client;
+    private final S3Presigner s3Presigner;   // inject từ S3Config
 
     @Value("${app.s3.bucket}")
     private String bucket;
@@ -37,29 +49,34 @@ public class S3Service {
 
     public String uploadCccdImage(MultipartFile file, UUID contractId, String side) {
         try {
-            String ext = getExtension(file.getOriginalFilename());
+            String ext = extension(file.getOriginalFilename());
             String key = "cccd/" + contractId + "/" + side + "." + ext;
-
-            s3Client.putObject(PutObjectRequest.builder()
-                            .bucket(bucket)
-                            .key(key)
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(bucket).key(key)
                             .contentType(file.getContentType())
                             .contentLength(file.getSize())
                             .build(),
                     RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
-
-            log.info("[CCCD] Uploaded {} key={}", side, key);
+            log.info("[S3] CCCD uploaded key={}", key);
             return key;
-
         } catch (IOException e) {
-            throw new RuntimeException("Failed to upload CCCD image: " + e.getMessage(), e);
+            throw new RuntimeException("Upload CCCD thất bại: " + e.getMessage(), e);
         }
     }
 
-    public String getImageUrl(String key) {
-        return "https://" + cloudFrontDomain + "/" + key;
+    public String uploadContractPdf(byte[] pdfBytes, UUID contractId) {
+        String key = "contracts/" + contractId + "/snapshot_" + System.currentTimeMillis() + ".pdf";
+        s3Client.putObject(
+                PutObjectRequest.builder()
+                        .bucket(bucket).key(key)
+                        .contentType("application/pdf")
+                        .contentLength((long) pdfBytes.length)
+                        .build(),
+                RequestBody.fromBytes(pdfBytes));
+        log.info("[S3] Contract PDF uploaded key={}", key);
+        return key;
     }
-
 
     public byte[] downloadBytes(String key) {
         return s3Client.getObjectAsBytes(
@@ -67,6 +84,28 @@ public class S3Service {
         ).asByteArray();
     }
 
+    public String presignedUrl(String key, int ttlMinutes) {
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofMinutes(ttlMinutes))
+                .getObjectRequest(r -> r.bucket(bucket).key(key))
+                .build();
+        return s3Presigner.presignGetObject(presignRequest)
+                .url().toString();
+    }
+
+    public void deleteIfExists(String key) {
+        if (key == null || key.isBlank()) return;
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
+            log.info("[S3] Deleted key={}", key);
+        } catch (Exception e) {
+            log.warn("[S3] Delete failed key={}: {}", key, e.getMessage());
+        }
+    }
+
+    public String cloudFrontUrl(String key) {
+        return "https://" + cloudFrontDomain + "/" + key;
+    }
 
     public byte[] appendCccdPage(byte[] contractPdf,
                                  byte[] frontImageBytes,
@@ -74,43 +113,35 @@ public class S3Service {
         try (PDDocument doc = Loader.loadPDF(contractPdf);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-            // Trang mới A4 ngang
+            // A4 landscape
             PDPage page = new PDPage(
                     new PDRectangle(PDRectangle.A4.getHeight(), PDRectangle.A4.getWidth()));
             doc.addPage(page);
 
-            float pageWidth = page.getMediaBox().getWidth();
-            float pageHeight = page.getMediaBox().getHeight();
+            float pageW = page.getMediaBox().getWidth();
+            float pageH = page.getMediaBox().getHeight();
             float margin = 30f;
             float gap = 20f;
-            float imgWidth = (pageWidth - margin * 2 - gap) / 2;
-            float imgHeight = pageHeight - margin * 2 - 60f;
+            float imgW = (pageW - margin * 2 - gap) / 2;
+            float imgH = pageH - margin * 2 - 60f;
 
-            PDImageXObject frontImg = PDImageXObject.createFromByteArray(
-                    doc, frontImageBytes, "front");
-            PDImageXObject backImg = PDImageXObject.createFromByteArray(
-                    doc, backImageBytes, "back");
+            PDImageXObject frontImg = PDImageXObject.createFromByteArray(doc, frontImageBytes, "front");
+            PDImageXObject backImg = PDImageXObject.createFromByteArray(doc, backImageBytes, "back");
 
-            float frontScale = Math.min(
-                    imgWidth / frontImg.getWidth(),
-                    imgHeight / frontImg.getHeight());
-            float backScale = Math.min(
-                    imgWidth / backImg.getWidth(),
-                    imgHeight / backImg.getHeight());
+            float frontScale = Math.min(imgW / frontImg.getWidth(), imgH / frontImg.getHeight());
+            float backScale = Math.min(imgW / backImg.getWidth(), imgH / backImg.getHeight());
+            float frontW = frontImg.getWidth() * frontScale, frontH = frontImg.getHeight() * frontScale;
+            float backW = backImg.getWidth() * backScale, backH = backImg.getHeight() * backScale;
 
-            float frontW = frontImg.getWidth() * frontScale;
-            float frontH = frontImg.getHeight() * frontScale;
-            float backW = backImg.getWidth() * backScale;
-            float backH = backImg.getHeight() * backScale;
             PDType1Font fontBold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
             PDType1Font fontNormal = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
 
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
-                float baseY = pageHeight - margin - 60f;
+                float baseY = pageH - margin - 60f;
 
                 cs.beginText();
                 cs.setFont(fontBold, 13);
-                cs.newLineAtOffset(margin, pageHeight - margin - 20);
+                cs.newLineAtOffset(margin, pageH - margin - 20);
                 cs.showText("PHU LUC: CAN CUOC CONG DAN CUA NGUOI THUE");
                 cs.endText();
 
@@ -121,7 +152,7 @@ public class S3Service {
                 cs.showText("Mat truoc");
                 cs.endText();
 
-                float backX = margin + imgWidth + gap;
+                float backX = margin + imgW + gap;
                 cs.drawImage(backImg, backX, baseY - backH, backW, backH);
                 cs.beginText();
                 cs.setFont(fontNormal, 10);
@@ -134,13 +165,56 @@ public class S3Service {
             return out.toByteArray();
 
         } catch (Exception e) {
-            log.error("[CCCD] appendCccdPage failed", e);
-            throw new IllegalStateException("Failed to append CCCD to PDF", e);
+            log.error("[S3] appendCccdPage failed", e);
+            throw new IllegalStateException("Append CCCD page thất bại: " + e.getMessage(), e);
         }
     }
 
-    private String getExtension(String fileName) {
+    public byte[] compressCccdImage(byte[] imageBytes) {
+        try {
+            BufferedImage original = ImageIO.read(new ByteArrayInputStream(imageBytes));
+            if (original == null) return imageBytes; // fallback nếu không đọc được
+
+            int maxWidth = 1000;
+            BufferedImage target;
+
+            if (original.getWidth() > maxWidth) {
+                int newHeight = (int) ((double) original.getHeight() / original.getWidth() * maxWidth);
+                Image scaled = original.getScaledInstance(maxWidth, newHeight, Image.SCALE_SMOOTH);
+                target = new BufferedImage(maxWidth, newHeight, BufferedImage.TYPE_INT_RGB);
+                Graphics2D g2d = target.createGraphics();
+                g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g2d.drawImage(scaled, 0, 0, null);
+                g2d.dispose();
+            } else {
+                target = new BufferedImage(original.getWidth(), original.getHeight(), BufferedImage.TYPE_INT_RGB);
+                Graphics2D g2d = target.createGraphics();
+                g2d.drawImage(original, 0, 0, null);
+                g2d.dispose();
+            }
+
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ImageWriter writer = ImageIO.getImageWritersByFormatName("jpeg").next();
+            ImageWriteParam param = writer.getDefaultWriteParam();
+            param.setCompressionMode(ImageWriteParam.MODE_EXPLICIT);
+            param.setCompressionQuality(0.75f);
+            writer.setOutput(ImageIO.createImageOutputStream(out));
+            writer.write(null, new IIOImage(target, null, null), param);
+            writer.dispose();
+
+            byte[] compressed = out.toByteArray();
+            log.info("[S3] CCCD compressed {}KB → {}KB",
+                    imageBytes.length / 1024, compressed.length / 1024);
+            return compressed;
+
+        } catch (Exception e) {
+            log.warn("[S3] CCCD compress failed, using original: {}", e.getMessage());
+            return imageBytes; // fallback về ảnh gốc
+        }
+    }
+
+    private String extension(String fileName) {
         if (fileName == null || !fileName.contains(".")) return "jpg";
-        return fileName.substring(fileName.lastIndexOf(".") + 1).toLowerCase();
+        return fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
     }
 }

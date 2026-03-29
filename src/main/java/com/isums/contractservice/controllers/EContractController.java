@@ -20,115 +20,142 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class EContractController {
 
-    private final EContractService contractService;
-    private final VnptEContractClient client;
+    private final EContractService service;
+    private final VnptEContractClient vnptClient;
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('MANAGER','LANDLORD')")
-    public ApiResponse<EContractDto> createDocument(@AuthenticationPrincipal Jwt jwt, @RequestBody @Valid CreateEContractRequest req) {
-        UUID actorId = extractActorId(jwt);
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
+    public ApiResponse<EContractDto> create(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestBody @Valid CreateEContractRequest req) {
         return ApiResponses.created(
-                contractService.createDraftEContract(actorId, jwt.getTokenValue(), req),
-                "Success to create e-contract");
+                service.createDraft(actorId(jwt), jwt.getTokenValue(), req),
+                "Tạo hợp đồng thành công");
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('MANAGER','LANDLORD')")
-    public ApiResponse<EContractDto> getEContractById(@PathVariable UUID id) {
-        return ApiResponses.ok(contractService.getEContractById(id),
-                "Success to get e-contract");
+    public ApiResponse<EContractDto> getById(@PathVariable UUID id) {
+        return ApiResponses.ok(service.getById(id), "Success");
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('MANAGER','LANDLORD')")
-    public ApiResponse<List<EContractDto>> getAllEContracts() {
-        return ApiResponses.ok(contractService.getAllEContracts(), "Success to get e-contracts");
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
+    public ApiResponse<List<EContractDto>> getAll() {
+        return ApiResponses.ok(service.getAll(), "Success");
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('MANAGER','LANDLORD')")
-    public ApiResponse<EContractDto> updateEContractById(@PathVariable UUID id, @Valid @RequestBody UpdateEContractRequest req) {
-        return ApiResponses.ok(contractService.updateEContractById(id, req), "Success to update e-contract");
-    }
-
-    @GetMapping("/{id}/cccd-status")
-    public ApiResponse<Boolean> checkCccd(@PathVariable UUID id) {
-        return ApiResponses.ok(contractService.hasCccd(id), "CCCD status checked");
-    }
-
-    @PutMapping(value = "/{id}/cccd", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ApiResponse<Void> uploadCccd(@PathVariable String id, @RequestParam("frontImage") MultipartFile frontImage, @RequestParam("backImage") MultipartFile backImage) {
-        contractService.uploadCccd(id, frontImage, backImage);
-        return ApiResponses.ok(null, "CCCD uploaded successfully");
-    }
-
-    @PutMapping("/ready/{id}")
     @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
-    public ApiResponse<VnptDocumentDto> readyEContract(@PathVariable UUID id) {
-        return ApiResponses.ok(contractService.readyEContract(id),
-                "Success to ready e-contract");
+    public ApiResponse<EContractDto> update(
+            @PathVariable UUID id,
+            @RequestBody @Valid UpdateEContractRequest req) {
+        return ApiResponses.ok(service.updateContract(id, req), "Cập nhật thành công");
     }
 
-    @PutMapping("/confirm-by-admin/{id}")
-    @PreAuthorize("hasRole('LANDLORD')")
-    public ApiResponse<Void> confirmByAdminEContract(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
-        contractService.confirmEContract(id, jwt.getSubject(), jwt.getTokenValue());
-        return ApiResponses.ok(null, "Success to confirm e-contract");
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
+    public ApiResponse<Void> delete(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID id) {
+        service.deleteContract(id, actorId(jwt));
+        return ApiResponses.ok(null, "Xóa hợp đồng thành công");
+    }
+
+    @PutMapping("/{id}/confirm")
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
+    public ApiResponse<EContractDto> confirm(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID id) {
+        return ApiResponses.ok(
+                service.confirmByAdmin(id, actorId(jwt)),
+                "Đã gửi hợp đồng cho tenant xem và xác nhận");
     }
 
     @PostMapping("/sign-admin")
     @PreAuthorize("hasRole('LANDLORD')")
-    public ApiResponse<ProcessResponse> signEContractAdmin(@RequestBody VnptProcessDto req) {
-        return ApiResponses.ok(contractService.signProcessForAdmin(req),
-                "Success to sign e-contract");
+    public ApiResponse<ProcessResponse> signAdmin(@RequestBody VnptProcessDto req) {
+        return ApiResponses.ok(service.signByLandlord(req), "Landlord đã ký thành công");
+    }
+
+    /** Landlord huỷ hợp đồng (CORRECTING hoặc READY). */
+    @PutMapping("/{id}/cancel")
+    @PreAuthorize("hasRole('LANDLORD')")
+    public ApiResponse<Void> cancelByLandlord(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID id,
+            @RequestBody @Valid TerminateContractRequest req) {
+        service.cancelByLandlord(id, req.reason(), actorId(jwt));
+        return ApiResponses.ok(null, "Đã huỷ hợp đồng");
+    }
+
+    @GetMapping("/{id}/pdf-url")
+    public ApiResponse<String> getPdfUrl(@PathVariable UUID id, @RequestHeader("X-Contract-Token") String contractToken) {
+        return ApiResponses.ok(service.getPdfPresignedUrl(id, contractToken),
+                "Presigned URL hợp lệ trong 30 phút");
+    }
+
+
+    @PutMapping(value = "/{id}/cccd", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiResponse<VnptDocumentDto> tenantConfirmWithCccd(
+            @PathVariable UUID id,
+            @RequestParam("frontImage") MultipartFile frontImage,
+            @RequestParam("backImage")  MultipartFile backImage,
+            @RequestHeader("X-Contract-Token") String contractToken) {
+        return ApiResponses.ok(
+                service.tenantConfirmWithCccd(id, frontImage, backImage, contractToken),
+                "Xác nhận thành công. Hợp đồng đã được gửi lên hệ thống ký điện tử.");
+    }
+
+    @GetMapping("/{id}/cccd-status")
+    public ApiResponse<Boolean> cccdStatus(@PathVariable UUID id) {
+        return ApiResponses.ok(service.hasCccd(id), "Success");
+    }
+
+    @PutMapping("/{id}/tenant-cancel")
+    public ApiResponse<Void> cancelByTenant(
+            @PathVariable UUID id,
+            @RequestBody @Valid TerminateContractRequest req,
+            @RequestHeader("X-Contract-Token") String contractToken) {
+        service.cancelByTenant(id, req.reason(), null, contractToken);
+        return ApiResponses.ok(null, "Đã từ chối hợp đồng");
     }
 
     @PostMapping("/processCode")
-    public ApiResponse<ProcessLoginInfoDto> processCode(@RequestBody ProcessCodeLoginRequest req) {
+    public ApiResponse<ProcessLoginInfoDto> processCode(
+            @RequestBody ProcessCodeLoginRequest req) {
         return ApiResponses.ok(
-                contractService.getAccessInfoByProcessCode(req.processCode()),
-                "Success to get access info from VNPT");
+                service.getAccessInfoByProcessCode(req.processCode()),
+                "Lấy thông tin ký thành công");
     }
+
 
     @PostMapping("/sign")
-    public ApiResponse<ProcessResponse> signEContract(@RequestBody VnptProcessDto req) {
-        return ApiResponses.ok(contractService.signProcess(req),
-                "Success to sign e-contract");
+    public ApiResponse<ProcessResponse> sign(@RequestBody VnptProcessDto req) {
+        return ApiResponses.ok(service.signByTenant(req), "Ký hợp đồng thành công");
     }
 
-    @PutMapping("/{id}/terminate")
-    @PreAuthorize("hasRole('LANDLORD')")
-    public ApiResponse<Void> terminateContract(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id, @RequestBody @Valid TerminateContractRequest req) {
-        contractService.terminateContract(id, req.reason(), extractActorId(jwt));
-        return ApiResponses.ok(null, "Contract terminated successfully");
-    }
 
     @PostMapping("/outsystem")
-    public ApiResponse<EContractDto> getEContractByDocumentId(@RequestBody ProcessCodeLoginRequest req) {
-        return ApiResponses.ok(contractService.getEContractOutSystem(req.processCode()),
-                "Success to get e-contract outsystem");
+    public ApiResponse<EContractDto> outSystem(@RequestBody ProcessCodeLoginRequest req) {
+        return ApiResponses.ok(service.getOutSystem(req.processCode()), "Success");
     }
 
     @GetMapping("/vnpt-document/{documentId}")
-    public ApiResponse<VnptDocumentDto> getVnptEContractByDocumentId(@PathVariable String documentId) {
-        return ApiResponses.ok(
-                contractService.getVnptEContractByDocumentId(documentId),
-                "Success to get e-contract");
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
+    public ApiResponse<VnptDocumentDto> vnptDocument(@PathVariable String documentId) {
+        return ApiResponses.ok(service.getVnptDocumentById(documentId), "Success");
     }
 
     @GetMapping("/test-token")
-    public String getToken() {
-        return client.getToken();
+    @PreAuthorize("hasRole('LANDLORD')")
+    public String testToken() {
+        return vnptClient.getToken();
     }
 
-    private UUID extractActorId(Jwt jwt) {
-        String raw = jwt.getSubject();
-        if (raw == null || raw.isBlank())
-            throw new IllegalStateException("Missing user id in JWT");
-        try {
-            return UUID.fromString(raw);
-        } catch (IllegalArgumentException e) {
-            throw new IllegalStateException("JWT user id is not a UUID: " + raw);
-        }
+    // ── Helper ────────────────────────────────────────────────────────────────
+
+    private UUID actorId(Jwt jwt) {
+        try { return UUID.fromString(jwt.getSubject()); }
+        catch (Exception e) { throw new IllegalStateException("Invalid JWT subject"); }
     }
 }

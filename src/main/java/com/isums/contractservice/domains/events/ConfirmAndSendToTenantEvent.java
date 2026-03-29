@@ -1,13 +1,18 @@
 package com.isums.contractservice.domains.events;
 
-import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.util.UUID;
 
+@Builder
 public record ConfirmAndSendToTenantEvent(
+        UUID recipientUserId,
+        UUID contractId,
+        String contractName,
         String url,
-        UUID recipientUserId
-) {}
+        String confirmUrl,
+        Instant startDate,
+        Instant endDate
+) {
+}
