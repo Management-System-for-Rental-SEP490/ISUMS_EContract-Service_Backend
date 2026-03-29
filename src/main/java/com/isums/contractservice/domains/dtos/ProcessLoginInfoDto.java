@@ -1,7 +1,5 @@
 package com.isums.contractservice.domains.dtos;
 
-import java.util.UUID;
-
 public record ProcessLoginInfoDto(
         String processId,
         String documentId,

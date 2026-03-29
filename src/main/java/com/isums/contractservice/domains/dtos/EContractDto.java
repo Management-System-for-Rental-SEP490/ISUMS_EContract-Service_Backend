@@ -18,7 +18,28 @@ public record EContractDto(
         Instant startAt,
         Instant endAt,
         EContractStatus status,
+        String pdfUrl,
         UUID createdBy,
         Instant createdAt
 ) {
+
+    public EContractDto updatePdfUrl(String pdfUrl) {
+        return new EContractDto(
+                this.id,
+                this.documentId,
+                this.documentNo,
+                this.userId,
+                this.tenantId,
+                this.html,
+                this.name,
+                this.snapshotKey,
+                this.houseId,
+                this.startAt,
+                this.endAt,
+                this.status,
+                pdfUrl,
+                this.createdBy,
+                this.createdAt
+        );
+    }
 }

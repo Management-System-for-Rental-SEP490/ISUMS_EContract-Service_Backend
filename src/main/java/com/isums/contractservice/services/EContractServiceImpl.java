@@ -133,7 +133,10 @@ public class EContractServiceImpl implements EContractService {
     @Override
     @Transactional(readOnly = true)
     public EContractDto getById(UUID id) {
-        return mapper.contractToDto(findById(id));
+        EContract contract = findById(id);
+        String pdfUrl = getPdfPresignedUrlForAdmin(id);
+        EContractDto dto = mapper.contractToDto(contract);
+        return dto.updatePdfUrl(pdfUrl);
     }
 
     @Override
@@ -223,6 +226,17 @@ public class EContractServiceImpl implements EContractService {
 
         log.info("[EContract] PENDING_TENANT_REVIEW contractId={} snapshotKey={}", contractId, snapshotKey);
         return mapper.contractToDto(c);
+    }
+
+    @Transactional(readOnly = true)
+    public String getPdfPresignedUrlForAdmin(UUID contractId) {
+        EContract c = findById(contractId);
+
+        if (c.getSnapshotKey() == null) {
+            throw new IllegalStateException("Hợp đồng chưa được tạo PDF. Vui lòng liên hệ chủ nhà.");
+        }
+
+        return s3.presignedUrl(c.getSnapshotKey(), 60);
     }
 
     @Override
@@ -358,22 +372,22 @@ public class EContractServiceImpl implements EContractService {
     @Transactional(readOnly = true)
     public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode) {
         try {
-            EContract contract = contractRepo.findByDocumentNo(processCode).orElseThrow(() -> new NotFoundException("EContract not found"));
+            ProcessLoginInfoDto result = parseProcessLogin(vnptClient.getAccessInfoByProcessCode(processCode));
+            EContract contract = contractRepo.findByDocumentId(result.documentId()).orElseThrow(() -> new NotFoundException("EContract not found"));
             if (contract.getSnapshotKey() == null) {
                 throw new IllegalStateException("Hợp đồng chưa được tạo PDF.");
             }
 
             String pdfUrl = s3.presignedUrl(contract.getSnapshotKey(), pdfUrlTtlMinutes);
+            log.info(pdfUrl);
 
-            ProcessLoginInfoDto result = parseProcessLogin(vnptClient.getAccessInfoByProcessCode(processCode));
-            result.updatePdfUrl(pdfUrl);
-
-            return result;
+            return result.updatePdfUrl(pdfUrl);
         } catch (Exception ex) {
             log.error("getAccessInfoByProcessCode failed processCode={}", processCode, ex);
             throw new IllegalStateException("Lấy thông tin ký thất bại: " + ex.getMessage());
         }
     }
+
 
     @Override
     @Transactional
