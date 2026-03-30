@@ -8,31 +8,37 @@ import java.util.UUID;
 
 public interface EContractService {
 
-    EContractDto createDraftEContract(UUID actorId, String jwtToken, CreateEContractRequest req);
+    EContractDto createDraft(UUID actorId, String jwtToken, CreateEContractRequest req);
 
-    EContractDto getEContractById(UUID id);
+    EContractDto getById(UUID id);
 
-    List<EContractDto> getAllEContracts();
+    List<EContractDto> getAll();
 
-    EContractDto updateEContractById(UUID id, UpdateEContractRequest req);
+    EContractDto updateContract(UUID id, UpdateEContractRequest req);
 
-    boolean hasCccd(UUID contractId);
+    EContractDto confirmByAdmin(UUID contractId, UUID actorId);
 
-    void uploadCccd(String dọcumentId, MultipartFile frontImage, MultipartFile backImage);
+    ProcessResponse signByLandlord(VnptProcessDto process);
 
-    VnptDocumentDto readyEContract(UUID contractId);
+    void cancelByLandlord(UUID contractId, String reason, UUID actorId);
 
-    void confirmEContract(UUID contractId, String keycloakId, String jwtToken);
+    String getPdfPresignedUrl(UUID contractId, String contractToken);
+
+    VnptDocumentDto tenantConfirmWithCccd(UUID contractId, MultipartFile frontImage, MultipartFile backImage, String contractToken);
 
     ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode);
 
-    EContractDto getEContractOutSystem(String processCode);
+    ProcessResponse signByTenant(VnptProcessDto process);
 
-    ProcessResponse signProcess(VnptProcessDto process);
+    void cancelByTenant(UUID contractId, String reason, UUID tenantUserId, String contractToken);
 
-    ProcessResponse signProcessForAdmin(VnptProcessDto process);
+    void deleteContract(UUID contractId, UUID actorId);
 
-    VnptDocumentDto getVnptEContractByDocumentId(String documentId);
+    boolean hasCccd(UUID contractId);
 
-    void terminateContract(UUID contractId, String reason, UUID terminatedBy);
+    EContractDto getOutSystem(String processCode);
+
+    VnptDocumentDto getVnptDocumentById(String documentId);
+
+    void testPayment(UUID eContractId);
 }

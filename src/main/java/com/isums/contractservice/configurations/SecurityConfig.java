@@ -36,8 +36,11 @@ public class SecurityConfig {
                                 "/api/econtracts/outsystem",
                                 "/api/econtracts/sign",
                                 "/api/econtracts/*/cccd",
-                                "/api/econtracts/*/cccd-status"
-
+                                "/api/econtracts/*/cccd-status",
+                                "/api/econtracts/ws",
+                                "/api/econtracts/ws/**",
+                                "/api/econtracts/*/pdf-url",
+                                "/api/econtracts/*/tenant-cancel"
                         ).permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated()

@@ -127,8 +127,17 @@ public class VnptEContractClientImpl implements VnptEContractClient {
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .header("X-Internal-Token", props.getGatewayToken())
                     .body(parts)
-                    .retrieve()
-                    .body(String.class);
+                    .exchange((req, res) -> {
+                        byte[] bytes = res.getBody().readAllBytes();
+                        String body = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                        log.info("[VNPT] createDocument status={} body={}", res.getStatusCode(), body);
+                        if (res.getStatusCode().isError()) {
+                            throw new RuntimeException("HTTP " + res.getStatusCode() + "\n" + body);
+                        }
+                        return body;
+                    });
+
+            log.info("[VNPT] createDocument response raw={}", response);
 
             if (response == null || response.isBlank()) {
                 return VnptResult.error("Gateway returned empty body");

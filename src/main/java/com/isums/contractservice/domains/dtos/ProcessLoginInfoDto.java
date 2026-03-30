@@ -1,7 +1,5 @@
 package com.isums.contractservice.domains.dtos;
 
-import java.util.UUID;
-
 public record ProcessLoginInfoDto(
         String processId,
         String documentId,
@@ -10,5 +8,18 @@ public record ProcessLoginInfoDto(
         String accessToken,
         String position,
         Integer pageSign,
-        boolean isOTP
-) {}
+        String pdfUrl
+) {
+    public ProcessLoginInfoDto updatePdfUrl(String newPdfUrl) {
+        return new ProcessLoginInfoDto(
+                this.processId,
+                this.documentId,
+                this.documentNo,
+                this.processedByUserId,
+                this.accessToken,
+                this.position,
+                this.pageSign,
+                newPdfUrl
+        );
+    }
+}

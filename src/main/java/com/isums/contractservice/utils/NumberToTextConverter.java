@@ -3,8 +3,7 @@ package com.isums.contractservice.utils;
 public class NumberToTextConverter {
 
     private static final String[] UNITS = {"", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"};
-    private static final String[] TENS = {"", "mười", "hai mươi", "ba mươi", "bốn mươi",
-            "năm mươi", "sáu mươi", "bảy mươi", "tám mươi", "chín mươi"};
+    private static final String[] TENS = {"", "mười", "hai mươi", "ba mươi", "bốn mươi", "năm mươi", "sáu mươi", "bảy mươi", "tám mươi", "chín mươi"};
     private static final String[] GROUPS = {"", "nghìn", "triệu", "tỷ"};
 
     public static String convert(long number) {
