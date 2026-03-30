@@ -7,6 +7,7 @@ import java.util.UUID;
 
 @Builder
 public record ConfirmAndSendToTenantEvent(
+        String messageId,
         UUID recipientUserId,
         UUID contractId,
         String contractName,

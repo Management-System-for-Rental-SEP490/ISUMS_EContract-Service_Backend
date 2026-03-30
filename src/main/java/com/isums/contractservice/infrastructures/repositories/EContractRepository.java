@@ -10,7 +10,12 @@ import java.util.UUID;
 public interface EContractRepository extends JpaRepository<EContract, UUID> {
 
     Optional<EContract> findByDocumentId(String documentId);
+
     Optional<EContract> findByDocumentNo(String documentNo);
+
     List<EContract> findAllByOrderByCreatedAtAsc();
+
     Optional<EContract> findTopByUserIdOrderByCreatedAtDesc(UUID userId);
+
+    Optional<EContract> findByHouseIdAndUserId(UUID houseId, UUID userId);
 }

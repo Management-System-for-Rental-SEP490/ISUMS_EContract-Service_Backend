@@ -134,9 +134,14 @@ public class EContractServiceImpl implements EContractService {
     @Transactional(readOnly = true)
     public EContractDto getById(UUID id) {
         EContract contract = findById(id);
-        String pdfUrl = getPdfPresignedUrlForAdmin(id);
-        EContractDto dto = mapper.contractToDto(contract);
-        return dto.updatePdfUrl(pdfUrl);
+        if (contract.getStatus() != EContractStatus.DRAFT && contract.getStatus() != EContractStatus.PENDING_TENANT_REVIEW) {
+
+            String pdfUrl = getPdfPresignedUrlForAdmin(id);
+
+            EContractDto dto = mapper.contractToDto(contract);
+            return dto.updatePdfUrl(pdfUrl);
+        }
+        return mapper.contractToDto(contract);
     }
 
     @Override
@@ -203,6 +208,7 @@ public class EContractServiceImpl implements EContractService {
         String confirmUrl = contractViewBaseUrl + "/" + contractId + "/confirm?token=" + magicToken;
 
         ConfirmAndSendToTenantEvent event = ConfirmAndSendToTenantEvent.builder()
+                .messageId(UUID.randomUUID().toString())
                 .recipientUserId(c.getUserId())
                 .contractId(contractId)
                 .contractName(c.getName())
@@ -233,7 +239,7 @@ public class EContractServiceImpl implements EContractService {
         EContract c = findById(contractId);
 
         if (c.getSnapshotKey() == null) {
-            throw new IllegalStateException("Hợp đồng chưa được tạo PDF. Vui lòng liên hệ chủ nhà.");
+            throw new IllegalStateException("Hợp đồng chưa được tạo PDF.");
         }
 
         return s3.presignedUrl(c.getSnapshotKey(), 60);
@@ -246,7 +252,7 @@ public class EContractServiceImpl implements EContractService {
         EContract c = findById(contractId);
 
         if (c.getSnapshotKey() == null) {
-            throw new IllegalStateException("Hợp đồng chưa được tạo PDF. Vui lòng liên hệ chủ nhà.");
+            throw new IllegalStateException("Hợp đồng chưa được tạo PDF.");
         }
 
         return s3.presignedUrl(c.getSnapshotKey(), pdfUrlTtlMinutes);
@@ -369,7 +375,6 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
-    @Transactional(readOnly = true)
     public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode) {
         try {
             ProcessLoginInfoDto result = parseProcessLogin(vnptClient.getAccessInfoByProcessCode(processCode));
@@ -410,8 +415,9 @@ public class EContractServiceImpl implements EContractService {
             contractRepo.save(c);
             log.info("[EContract] COMPLETED contractId={}", c.getId());
 
-            activateTenant(c.getUserId());
             mapUserToHouse(c.getUserId(), c.getHouseId());
+
+            sendContractCompletedEvent(c);
         }
 
         return result.getData();
@@ -426,9 +432,7 @@ public class EContractServiceImpl implements EContractService {
 
         EContract c = findById(contractId);
         if (c.getStatus() != EContractStatus.PENDING_TENANT_REVIEW && c.getStatus() != EContractStatus.IN_PROGRESS) {
-            throw new IllegalStateException(
-                    "Tenant chỉ huỷ được ở PENDING_TENANT_REVIEW hoặc IN_PROGRESS. Hiện tại: "
-                            + c.getStatus());
+            throw new IllegalStateException("Tenant chỉ huỷ được ở PENDING_TENANT_REVIEW hoặc IN_PROGRESS. Hiện tại: " + c.getStatus());
         }
         c.setStatus(EContractStatus.CANCELLED_BY_TENANT);
         c.setTerminatedAt(Instant.now());
@@ -493,6 +497,13 @@ public class EContractServiceImpl implements EContractService {
         if (r == null || r.getData() == null || r.getData().id() == null)
             throw new NotFoundException("VNPT document not found: " + documentId);
         return r.getData();
+    }
+
+    @Override
+    public void testPayment(UUID eContractId) {
+        EContract contract = contractRepo.findById(eContractId).orElseThrow(() -> new NotFoundException("EContract not found"));
+
+        sendContractCompletedEvent(contract);
     }
 
     private void sendWsStatus(UUID contractId, String status, String message) {
@@ -617,10 +628,18 @@ public class EContractServiceImpl implements EContractService {
 
     private void mapUserToHouse(UUID userId, UUID houseId) {
         try {
-            kafka.send("map-user-to-house-topic",
-                    MapUserToHouseEvent.builder().userId(userId).houseId(houseId).build());
+            EContract contract = contractRepo.findByHouseIdAndUserId(houseId, userId)
+                    .orElse(null);
+
+            kafka.send("map-user-to-house-topic", MapUserToHouseEvent.builder()
+                    .userId(userId)
+                    .houseId(houseId)
+                    .handoverDate(contract != null ? contract.getHandoverDate() : null)
+                    .build());
+
+            log.info("[EContract] mapUserToHouse userId={} houseId={}", userId, houseId);
         } catch (Exception e) {
-            log.error("[MapUserHouse] Failed", e);
+            log.error("[MapUserHouse] Failed userId={} houseId={}", userId, houseId, e);
         }
     }
 
@@ -641,8 +660,7 @@ public class EContractServiceImpl implements EContractService {
                 .orElseThrow(() -> new IllegalStateException("Template LEASE_HOUSE not found"));
         LandlordProfile lp = landlordRepo.findByUserId(actorId)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Landlord chưa cập nhật thông tin. "
-                                + "Vui lòng cập nhật tại PUT /api/econtracts/landlord-profiles/me."));
+                        "Landlord chưa cập nhật thông tin. " + "Vui lòng cập nhật tại PUT /api/econtracts/landlord-profiles/me."));
 
         Map<String, Object> data = new HashMap<>();
         data.put("LANDLORD_NAME", lp.getFullName());
@@ -918,6 +936,44 @@ public class EContractServiceImpl implements EContractService {
             return new ProcessLoginInfoDto(waitId, docId, docNo, pBy, token, pos, ps, null);
         } catch (Exception e) {
             throw new IllegalStateException("Cannot parse VNPT response: " + e.getMessage() + "\nRAW=" + body, e);
+        }
+    }
+
+    private void sendContractCompletedEvent(EContract contract) {
+        try {
+            String tenantEmail = null;
+            try {
+                UserResponse tenant = userGrpc.getUserById(contract.getUserId().toString());
+                if (tenant != null && !tenant.getEmail().isBlank()) {
+                    tenantEmail = tenant.getEmail();
+                }
+            } catch (Exception e) {
+                log.warn("[EContract] Cannot fetch tenant email userId={}: {}", contract.getUserId(), e.getMessage());
+            }
+
+            ContractCompletedEvent event = ContractCompletedEvent.builder()
+                    .contractId(contract.getId())
+                    .tenantId(contract.getUserId())
+                    .tenantEmail(tenantEmail)
+                    .houseId(contract.getHouseId())
+                    .landlordId(contract.getCreatedBy())
+                    .depositAmount(contract.getDepositAmount())
+                    .rentAmount(contract.getPrice())
+                    .payDate(contract.getPayDate())
+                    .startAt(contract.getStartAt())
+                    .endAt(contract.getEndAt())
+                    .completedAt(Instant.now())
+                    .build();
+
+            kafka.send("contract-completed-topic", event)
+                    .whenComplete((res, ex) -> {
+                        if (ex != null)
+                            log.error("[EContract] ContractCompleted Kafka FAILED contractId={}: {}", contract.getId(), ex.getMessage(), ex);
+                        else
+                            log.info("[EContract] ContractCompleted Kafka OK contractId={} offset={}", contract.getId(), res.getRecordMetadata().offset());
+                    });
+        } catch (Exception e) {
+            log.error("[EContract] sendContractCompletedEvent failed contractId={}: {}", contract.getId(), e.getMessage(), e);
         }
     }
 

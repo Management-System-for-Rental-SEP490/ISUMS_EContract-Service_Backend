@@ -39,4 +39,6 @@ public interface EContractService {
     EContractDto getOutSystem(String processCode);
 
     VnptDocumentDto getVnptDocumentById(String documentId);
+
+    void testPayment(UUID eContractId);
 }
