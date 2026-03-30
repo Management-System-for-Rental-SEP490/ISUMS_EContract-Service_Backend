@@ -56,10 +56,6 @@ public class EContractController {
     private final EContractService service;
     private final VnptEContractClient vnptClient;
 
-    // ═══════════════════════════════════════════════════════════════
-    // ADMIN / MANAGER — CRUD
-    // ═══════════════════════════════════════════════════════════════
-
     @Operation(
             summary = "新しい契約を作成",
             description = """
@@ -175,10 +171,6 @@ public class EContractController {
         return com.isums.contractservice.domains.dtos.ApiResponses.ok(null, "Xóa hợp đồng thành công");
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // ADMIN / MANAGER — FLOW
-    // ═══════════════════════════════════════════════════════════════
-
     @Operation(
             summary = "契約を確認し tenant にメール送信",
             description = """
@@ -266,10 +258,6 @@ public class EContractController {
         service.cancelByLandlord(id, req.reason(), actorId(jwt));
         return com.isums.contractservice.domains.dtos.ApiResponses.ok(null, "Đã huỷ hợp đồng");
     }
-
-    // ═══════════════════════════════════════════════════════════════
-    // TENANT FLOW — JWT不要、X-Contract-Tokenを使用
-    // ═══════════════════════════════════════════════════════════════
 
     @Operation(
             summary = "[TENANT] 契約PDF閲覧用の presigned URL を取得",
@@ -453,10 +441,6 @@ public class EContractController {
             @RequestBody VnptProcessDto req) {
         return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.signByTenant(req), "Ký hợp đồng thành công");
     }
-
-    // ═══════════════════════════════════════════════════════════════
-    // MISC
-    // ═══════════════════════════════════════════════════════════════
 
     @Operation(
             summary = "[TENANT] process code から契約情報を取得",

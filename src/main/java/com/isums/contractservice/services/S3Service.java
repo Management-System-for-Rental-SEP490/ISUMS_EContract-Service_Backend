@@ -39,7 +39,7 @@ import java.util.UUID;
 public class S3Service {
 
     private final S3Client s3Client;
-    private final S3Presigner s3Presigner;   // inject từ S3Config
+    private final S3Presigner s3Presigner;
 
     @Value("${app.s3.bucket}")
     private String bucket;
@@ -113,7 +113,6 @@ public class S3Service {
         try (PDDocument doc = Loader.loadPDF(contractPdf);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-            // A4 landscape
             PDPage page = new PDPage(
                     new PDRectangle(PDRectangle.A4.getHeight(), PDRectangle.A4.getWidth()));
             doc.addPage(page);
@@ -142,14 +141,14 @@ public class S3Service {
                 cs.beginText();
                 cs.setFont(fontBold, 13);
                 cs.newLineAtOffset(margin, pageH - margin - 20);
-                cs.showText("PHU LUC: CAN CUOC CONG DAN CUA NGUOI THUE");
+                cs.showText("PHỤ LỤC: CĂN CƯỚC CÔNG DÂN CỦA NGƯỜI THUÊ");
                 cs.endText();
 
                 cs.drawImage(frontImg, margin, baseY - frontH, frontW, frontH);
                 cs.beginText();
                 cs.setFont(fontNormal, 10);
                 cs.newLineAtOffset(margin + frontW / 2 - 25, baseY - frontH - 15);
-                cs.showText("Mat truoc");
+                cs.showText("Mặt Trước");
                 cs.endText();
 
                 float backX = margin + imgW + gap;
@@ -157,7 +156,7 @@ public class S3Service {
                 cs.beginText();
                 cs.setFont(fontNormal, 10);
                 cs.newLineAtOffset(backX + backW / 2 - 20, baseY - backH - 15);
-                cs.showText("Mat sau");
+                cs.showText("Mặt Sau");
                 cs.endText();
             }
 
@@ -173,7 +172,7 @@ public class S3Service {
     public byte[] compressCccdImage(byte[] imageBytes) {
         try {
             BufferedImage original = ImageIO.read(new ByteArrayInputStream(imageBytes));
-            if (original == null) return imageBytes; // fallback nếu không đọc được
+            if (original == null) return imageBytes;
 
             int maxWidth = 1000;
             BufferedImage target;
@@ -209,7 +208,7 @@ public class S3Service {
 
         } catch (Exception e) {
             log.warn("[S3] CCCD compress failed, using original: {}", e.getMessage());
-            return imageBytes; // fallback về ảnh gốc
+            return imageBytes;
         }
     }
 
