@@ -1,6 +1,8 @@
 package com.isums.contractservice.infrastructures.abstracts;
 
 import com.isums.contractservice.domains.dtos.*;
+import common.paginations.dtos.PageRequest;
+import common.paginations.dtos.PageResponse;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -12,7 +14,7 @@ public interface EContractService {
 
     EContractDto getById(UUID id);
 
-    List<EContractDto> getAll();
+    PageResponse<EContractDto> getAll(PageRequest request);
 
     EContractDto updateContract(UUID id, UpdateEContractRequest req);
 
