@@ -108,4 +108,17 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(res.getStatusCode()).body(res);
     }
+
+    @ExceptionHandler(OcrValidationException.class)
+    public ResponseEntity<ApiResponse<Void>> handleOcrValidation(OcrValidationException ex) {
+        ApiResponse<Void> res = ApiResponses.fail(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                ex.getMessage(),
+                List.of(ApiError.builder()
+                        .code("OCR_VALIDATION_FAILED")
+                        .message(ex.getMessage())
+                        .build())
+        );
+        return ResponseEntity.status(res.getStatusCode()).body(res);
+    }
 }

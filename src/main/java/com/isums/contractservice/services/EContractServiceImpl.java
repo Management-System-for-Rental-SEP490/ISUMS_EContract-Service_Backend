@@ -8,6 +8,7 @@ import com.isums.contractservice.domains.entities.*;
 import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.events.*;
 import com.isums.contractservice.exceptions.NotFoundException;
+import com.isums.contractservice.exceptions.OcrValidationException;
 import com.isums.contractservice.infrastructures.abstracts.*;
 import com.isums.contractservice.infrastructures.grpcs.*;
 import com.isums.contractservice.infrastructures.mappers.EContractMapper;
@@ -548,20 +549,20 @@ public class EContractServiceImpl implements EContractService {
             OcrResult result = OcrResult.from(node);
 
             if (!node.path("isFrontSide").asBoolean(false))
-                throw new IllegalArgumentException("Ảnh không phải mặt trước CCCD (score=" + node.path("frontScore").asInt() + ").");
+                throw new OcrValidationException(OcrValidationException.NOT_FRONT_SIDE, "Ảnh không phải mặt trước CCCD.");
 
             if (result.identityNumber() == null)
-                throw new IllegalArgumentException("Không đọc được số CCCD. Vui lòng chụp lại rõ hơn.");
+                throw new OcrValidationException(OcrValidationException.CANNOT_READ_ID, "Không đọc được số CCCD.");
 
             if (expectedId != null && !expectedId.isBlank()
                     && !result.identityNumber().equals(expectedId))
-                throw new IllegalArgumentException("Số CCCD trong ảnh (" + result.identityNumber() + ") không khớp hợp đồng (" + expectedId + ").");
+                throw new OcrValidationException(OcrValidationException.ID_MISMATCH, "Số CCCD không khớp hợp đồng.");
 
-            if (result.fullName() != null && expectedName != null && !expectedName.isBlank()) {
+            if (result.fullName() != null && expectedName != null) {
                 String normOcr = norm(result.fullName());
                 String normExpected = norm(expectedName);
                 if (!normOcr.equals(normExpected) && !normExpected.contains(normOcr) && !normOcr.contains(normExpected)) {
-                    throw new IllegalArgumentException("Tên trong ảnh (" + result.fullName() + ") không khớp hợp đồng (" + expectedName + ").");
+                    throw new OcrValidationException(OcrValidationException.NAME_MISMATCH, "Tên không khớp hợp đồng.");
                 }
             } else if (result.fullName() == null) {
                 log.warn("[OCR] Không đọc được tên, bỏ qua kiểm tra tên. id={}", result.identityNumber());
@@ -569,7 +570,7 @@ public class EContractServiceImpl implements EContractService {
 
             log.info("[OCR] Front OK id={} name={}", result.identityNumber(), result.fullName());
             return result;
-        } catch (IllegalArgumentException e) {
+        } catch (OcrValidationException e) {
             throw e;
         } catch (Exception e) {
             log.warn("[OCR] Front service lỗi, bỏ qua validate: {}", e.getMessage());
@@ -580,11 +581,14 @@ public class EContractServiceImpl implements EContractService {
     private void validateCccdBack(MultipartFile file) {
         try {
             JsonNode node = callOcr(file, "/ocr/cccd/back");
+
             if (!node.path("isReadable").asBoolean(true))
-                throw new IllegalArgumentException("Ảnh mặt sau không rõ nét. Vui lòng chụp lại.");
+                throw new OcrValidationException(OcrValidationException.IMAGE_NOT_READABLE, "Ảnh mặt sau không rõ nét.");
+
             if (!node.path("isBackSide").asBoolean(false))
-                throw new IllegalArgumentException("Ảnh không phải mặt sau CCCD (score=" + node.path("backScore").asInt() + ").");
-        } catch (IllegalArgumentException e) {
+                throw new OcrValidationException(OcrValidationException.NOT_BACK_SIDE, "Ảnh không phải mặt sau CCCD.");
+            
+        } catch (OcrValidationException e) {
             throw e;
         } catch (Exception e) {
             log.warn("[OCR] Back service lỗi, bỏ qua validate: {}", e.getMessage());
