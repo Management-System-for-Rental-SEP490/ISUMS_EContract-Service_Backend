@@ -12,11 +12,15 @@ import com.isums.contractservice.infrastructures.abstracts.*;
 import com.isums.contractservice.infrastructures.grpcs.*;
 import com.isums.contractservice.infrastructures.mappers.EContractMapper;
 import com.isums.contractservice.infrastructures.repositories.*;
+import com.isums.contractservice.infrastructures.specifications.EContractSpec;
 import com.isums.contractservice.utils.NumberToTextConverter;
 import com.isums.houseservice.grpc.HouseResponse;
 import com.isums.userservice.grpc.UserResponse;
 import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
+import common.paginations.dtos.PageRequest;
+import common.paginations.dtos.PageResponse;
+import common.paginations.services.CachedPageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
@@ -31,6 +35,8 @@ import org.jsoup.nodes.Entities;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.*;
 import org.springframework.core.io.ByteArrayResource;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -41,9 +47,11 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.util.HtmlUtils;
+import tools.jackson.core.type.TypeReference;
 
 import java.io.*;
 import java.text.Normalizer;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -69,6 +77,11 @@ public class EContractServiceImpl implements EContractService {
     private final ObjectMapper json;
     private final KeycloakAdminServiceImpl keycloakAdmin;
     private final ContractTokenService contractTokenService;
+
+    private static final String PAGE_NS = "econtracts";
+    private static final Duration PAGE_TTL = Duration.ofMinutes(5);
+
+    private final CachedPageService cachedPageService;
 
     @Value("${ocr.service.url}")
     private String ocrUrl;
@@ -102,7 +115,6 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
-    @CacheEvict(allEntries = true, value = "allEContracts")
     public EContractDto createDraft(UUID actorId, String jwtToken, CreateEContractRequest req) {
         try {
             UUID tenantId;
@@ -119,6 +131,8 @@ public class EContractServiceImpl implements EContractService {
 
             HouseResponse house = houseGrpc.getHouseById(req.houseId());
             if (house == null) throw new NotFoundException("House not found: " + req.houseId());
+
+            cachedPageService.evictAll(PAGE_NS);
 
             return mapper.contractToDto(buildAndSaveDraft(actorId, tenantId, req, house));
 
@@ -145,14 +159,15 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
-    @Cacheable(value = "allEContracts")
-    public List<EContractDto> getAll() {
-        return mapper.contractsToDtoList(contractRepo.findAllByOrderByCreatedAtAsc());
+    public PageResponse<EContractDto> getAll(PageRequest request) {
+        return cachedPageService.getOrLoad(PAGE_NS, request, PAGE_TTL,
+                new TypeReference<>() {
+                }, () -> loadPage(request)
+        );
     }
 
     @Override
     @Transactional
-    @CacheEvict(allEntries = true, value = "allEContracts")
     public EContractDto updateContract(UUID id, UpdateEContractRequest req) {
         EContract c = findById(id);
         EContractStatus current = c.getStatus();
@@ -171,6 +186,8 @@ public class EContractServiceImpl implements EContractService {
 
             log.info("[EContract] CORRECTING contractId={}", id);
 
+            cachedPageService.evictAll(PAGE_NS);
+
         } else if (current == EContractStatus.DRAFT || current == EContractStatus.CORRECTING) {
             mapper.patch(req, c);
             contractRepo.save(c);
@@ -184,7 +201,6 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
-    @CacheEvict(allEntries = true, value = "allEContracts")
     public EContractDto confirmByAdmin(UUID contractId, UUID actorId) {
         EContract c = findById(contractId);
         EContractStatus cur = c.getStatus();
@@ -217,6 +233,8 @@ public class EContractServiceImpl implements EContractService {
                 .startDate(c.getStartAt())
                 .endDate(c.getEndAt())
                 .build();
+
+        cachedPageService.evictAll(PAGE_NS);
 
         log.info("[EContract] Sending Kafka event contractId={} to userId={}", contractId, c.getUserId());
 
@@ -260,7 +278,6 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
-    @CacheEvict(allEntries = true, value = "allEContracts")
     public VnptDocumentDto tenantConfirmWithCccd(UUID contractId, MultipartFile frontImage, MultipartFile backImage, String contractToken) {
 
         contractTokenService.validateToken(contractToken, contractId);
@@ -348,12 +365,13 @@ public class EContractServiceImpl implements EContractService {
 
         contractTokenService.invalidateToken(contractToken);
 
+        cachedPageService.evictAll(PAGE_NS);
+
         return sendResult.getData();
     }
 
     @Override
     @Transactional
-    @CacheEvict(allEntries = true, value = "allEContracts")
     public ProcessResponse signByLandlord(VnptProcessDto process) {
         VnptProcessDto withToken = process.withToken(vnptClient.getToken());
         VnptResult<ProcessResponse> result = vnptClient.signProcess(withToken);
@@ -370,6 +388,8 @@ public class EContractServiceImpl implements EContractService {
             contractRepo.save(c);
             log.info("[EContract] IN_PROGRESS (landlord signed) contractId={}", c.getId());
         }
+
+        cachedPageService.evictAll(PAGE_NS);
 
         return result.getData();
     }
@@ -418,6 +438,8 @@ public class EContractServiceImpl implements EContractService {
             mapUserToHouse(c.getUserId(), c.getHouseId());
 
             sendContractCompletedEvent(c);
+
+            cachedPageService.evictAll(PAGE_NS);
         }
 
         return result.getData();
@@ -425,7 +447,6 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
-    @CacheEvict(allEntries = true, value = "allEContracts")
     public void cancelByTenant(UUID contractId, String reason, UUID tenantUserId, String contractToken) {
 
         contractTokenService.validateToken(contractToken, contractId);
@@ -442,11 +463,12 @@ public class EContractServiceImpl implements EContractService {
         log.info("[EContract] CANCELLED_BY_TENANT contractId={}", contractId);
 
         contractTokenService.invalidateToken(contractToken);
+
+        cachedPageService.evictAll(PAGE_NS);
     }
 
     @Override
     @Transactional
-    @CacheEvict(allEntries = true, value = "allEContracts")
     public void cancelByLandlord(UUID contractId, String reason, UUID actorId) {
         EContract c = findById(contractId);
         if (c.getStatus() != EContractStatus.CORRECTING
@@ -459,6 +481,8 @@ public class EContractServiceImpl implements EContractService {
         c.setTerminatedBy(actorId);
         contractRepo.save(c);
         log.info("[EContract] CANCELLED_BY_LANDLORD contractId={}", contractId);
+
+        cachedPageService.evictAll(PAGE_NS);
     }
 
     @Override
@@ -975,6 +999,23 @@ public class EContractServiceImpl implements EContractService {
         } catch (Exception e) {
             log.error("[EContract] sendContractCompletedEvent failed contractId={}: {}", contract.getId(), e.getMessage(), e);
         }
+    }
+
+    private PageResponse<EContractDto> loadPage(PageRequest request) {
+        var pageable = org.springframework.data.domain.PageRequest.of(
+                request.page(),
+                request.validSize(),
+                Sort.by(request.sortBy()).descending());
+
+        Page<EContract> result = contractRepo.findAll(pageable);
+
+        return PageResponse.of(
+                mapper.contractsToDtoList(result.getContent()),
+                result.hasNext(),
+                result.getTotalElements(),
+                result.getTotalPages(),
+                result.getNumber()
+        );
     }
 
     private String tx(JsonNode n, String f) {

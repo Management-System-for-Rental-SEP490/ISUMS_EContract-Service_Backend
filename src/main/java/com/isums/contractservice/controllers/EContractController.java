@@ -3,11 +3,11 @@ package com.isums.contractservice.controllers;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
+import common.paginations.dtos.PageRequest;
+import common.paginations.dtos.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.enums.ParameterIn;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -109,9 +109,18 @@ public class EContractController {
             @ApiResponse(responseCode = "403", description = "権限がありません")
     })
     @GetMapping
-    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
-    public com.isums.contractservice.domains.dtos.ApiResponse<List<EContractDto>> getAll() {
-        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getAll(), "Success");
+//    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<PageResponse<EContractDto>> getAll(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
+            @RequestParam(required = false, defaultValue = "DESC") String sortDir) {
+
+        PageRequest request = PageRequest.of(page, size)
+                .withSortBy(sortBy)
+                .withSortDir(sortDir);
+
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getAll(request), "Success");
     }
 
     @Operation(
