@@ -13,7 +13,6 @@ import com.isums.contractservice.infrastructures.abstracts.*;
 import com.isums.contractservice.infrastructures.grpcs.*;
 import com.isums.contractservice.infrastructures.mappers.EContractMapper;
 import com.isums.contractservice.infrastructures.repositories.*;
-import com.isums.contractservice.infrastructures.specifications.EContractSpec;
 import com.isums.contractservice.utils.NumberToTextConverter;
 import com.isums.houseservice.grpc.HouseResponse;
 import com.isums.userservice.grpc.UserResponse;
@@ -436,7 +435,7 @@ public class EContractServiceImpl implements EContractService {
             contractRepo.save(c);
             log.info("[EContract] COMPLETED contractId={}", c.getId());
 
-            sendContractCompletedEvent(c);
+            fetchAndStoreSignedPdf(c);
 
             cachedPageService.evictAll(PAGE_NS);
         }
@@ -520,13 +519,6 @@ public class EContractServiceImpl implements EContractService {
         if (r == null || r.getData() == null || r.getData().id() == null)
             throw new NotFoundException("VNPT document not found: " + documentId);
         return r.getData();
-    }
-
-    @Override
-    public void testPayment(UUID eContractId) {
-        EContract contract = contractRepo.findById(eContractId).orElseThrow(() -> new NotFoundException("EContract not found"));
-
-        sendContractCompletedEvent(contract);
     }
 
     private void sendWsStatus(UUID contractId, String status, String message) {
@@ -965,7 +957,7 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
-    private void sendContractCompletedEvent(EContract contract) {
+    private void sendContractCompletedEvent(EContract contract, String signedPdfUrl) {
         try {
             String tenantEmail = null;
             Boolean isNewAccount = null;
@@ -976,7 +968,7 @@ public class EContractServiceImpl implements EContractService {
                     isNewAccount = !tenant.getIsEnabled();
                 }
             } catch (Exception e) {
-                log.warn("[EContract] Cannot fetch tenant email userId={}: {}", contract.getUserId(), e.getMessage());
+                log.warn("[EContract] Cannot fetch tenant userId={}: {}", contract.getUserId(), e.getMessage());
             }
 
             ContractCompletedEvent event = ContractCompletedEvent.builder()
@@ -992,17 +984,60 @@ public class EContractServiceImpl implements EContractService {
                     .startAt(contract.getStartAt())
                     .endAt(contract.getEndAt())
                     .completedAt(Instant.now())
+                    .signedPdfUrl(signedPdfUrl)
                     .build();
 
             kafka.send("contract-completed-topic", event)
                     .whenComplete((res, ex) -> {
                         if (ex != null)
-                            log.error("[EContract] ContractCompleted Kafka FAILED contractId={}: {}", contract.getId(), ex.getMessage(), ex);
+                            log.error("[EContract] Kafka FAILED contractId={}: {}", contract.getId(), ex.getMessage(), ex);
                         else
-                            log.info("[EContract] ContractCompleted Kafka OK contractId={} offset={}", contract.getId(), res.getRecordMetadata().offset());
+                            log.info("[EContract] Kafka OK contractId={}", contract.getId());
                     });
         } catch (Exception e) {
             log.error("[EContract] sendContractCompletedEvent failed contractId={}: {}", contract.getId(), e.getMessage(), e);
+        }
+    }
+
+    private void fetchAndStoreSignedPdf(EContract contract) {
+        try {
+            VnptResult<VnptDocumentDto> docResult = vnptClient.getEContractById(
+                    contract.getDocumentId(), vnptClient.getToken());
+
+            if (docResult == null || docResult.getData() == null
+                    || docResult.getData().downloadUrl() == null) {
+                log.warn("[EContract] No downloadUrl from VNPT contractId={} — sending event without PDF",
+                        contract.getId());
+                sendContractCompletedEvent(contract, null);
+                return;
+            }
+
+            String downloadUrl = docResult.getData().downloadUrl();
+            byte[] signedPdf = vnptClient.downloadSignedPdf(downloadUrl);
+
+            if (signedPdf == null || signedPdf.length == 0) {
+                log.warn("[EContract] Downloaded PDF empty contractId={}", contract.getId());
+                sendContractCompletedEvent(contract, null);
+                return;
+            }
+
+            s3.deleteIfExists(contract.getSnapshotKey());
+            String signedKey = s3.uploadContractPdf(signedPdf, contract.getId());
+
+            contract.setSnapshotKey(signedKey);
+            contractRepo.save(contract);
+
+            log.info("[EContract] Signed PDF stored contractId={} key={} size={}KB",
+                    contract.getId(), signedKey, signedPdf.length / 1024);
+
+            String pdfUrl = s3.presignedUrl(signedKey, 365 * 24 * 60);
+
+            sendContractCompletedEvent(contract, pdfUrl);
+
+        } catch (Exception e) {
+            log.error("[EContract] fetchAndStoreSignedPdf failed contractId={}: {}",
+                    contract.getId(), e.getMessage(), e);
+            sendContractCompletedEvent(contract, null);
         }
     }
 

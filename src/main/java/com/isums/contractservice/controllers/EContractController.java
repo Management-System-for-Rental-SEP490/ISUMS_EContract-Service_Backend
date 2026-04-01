@@ -495,12 +495,6 @@ public class EContractController {
         return vnptClient.getToken();
     }
 
-    @PostMapping("/test-payment")
-    @PreAuthorize("hasRole('LANDLORD')")
-    public void testPayment(@RequestBody UUID eContractId) {
-        service.testPayment(eContractId);
-    }
-
     private UUID actorId(Jwt jwt) {
         try {
             return UUID.fromString(jwt.getSubject());

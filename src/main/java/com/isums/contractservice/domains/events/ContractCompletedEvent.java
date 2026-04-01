@@ -10,7 +10,7 @@ public record ContractCompletedEvent(
         UUID contractId,
         UUID tenantId,
         String tenantEmail,
-        boolean isNewAccount,
+        Boolean isNewAccount,
         UUID houseId,
         UUID landlordId,
         Long depositAmount,
@@ -18,5 +18,7 @@ public record ContractCompletedEvent(
         Integer payDate,
         Instant startAt,
         Instant endAt,
-        Instant completedAt
-) {}
+        Instant completedAt,
+        String signedPdfUrl
+) {
+}
