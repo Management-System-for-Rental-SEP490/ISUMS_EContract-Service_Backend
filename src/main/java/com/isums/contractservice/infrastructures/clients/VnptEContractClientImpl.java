@@ -22,6 +22,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -369,6 +370,41 @@ public class VnptEContractClientImpl implements VnptEContractClient {
                 return VnptResult.error("Cannot parse: " + e.getMessage());
             }
         });
+    }
+
+    @Override
+    public byte[] downloadSignedPdf(String downloadUrl) {
+        try {
+            log.info("[VNPT] Downloading signed PDF downloadUrl={}", downloadUrl);
+
+            String raw = vnptRestClient.post()
+                    .uri("/internal/vnpt/forward-download")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .header("X-Internal-Token", props.getGatewayToken())
+                    .body(Map.of(
+                            "path", downloadUrl,
+                            "method", "GET",
+                            "headers", Map.of()
+                    ))
+                    .exchange((req, res) -> {
+                        if (res.getStatusCode().isError()) {
+                            String body = new String(res.getBody().readAllBytes());
+                            throw new IllegalStateException("Gateway download failed: HTTP "
+                                    + res.getStatusCode() + " " + body);
+                        }
+                        return new String(res.getBody().readAllBytes());
+                    });
+
+            if (raw == null || raw.isBlank())
+                throw new IllegalStateException("Gateway returned empty body");
+
+            byte[] pdfBytes = Base64.getDecoder().decode(raw.trim());
+            log.info("[VNPT] Signed PDF downloaded size={}KB", pdfBytes.length / 1024);
+            return pdfBytes;
+
+        } catch (Exception e) {
+            throw new IllegalStateException("Failed to download signed PDF: " + e.getMessage(), e);
+        }
     }
 
     private String parseToken(String body) {

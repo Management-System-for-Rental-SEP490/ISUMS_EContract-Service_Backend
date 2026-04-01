@@ -35,7 +35,7 @@ public class ContractTokenService {
         return token;
     }
 
-    public UUID validateToken(String token, UUID contractId) {
+    public void validateToken(String token, UUID contractId) {
         if (token == null || token.isBlank())
             throw new IllegalArgumentException("Token không được để trống.");
 
@@ -53,7 +53,6 @@ public class ContractTokenService {
         if (!tokenContractId.equals(contractId))
             throw new IllegalArgumentException("Token không khớp với hợp đồng.");
 
-        return tenantUserId;
     }
 
     public void invalidateToken(String token) {
