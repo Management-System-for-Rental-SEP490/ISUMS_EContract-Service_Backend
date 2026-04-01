@@ -80,7 +80,7 @@ public class EContractServiceImpl implements EContractService {
     private final ContractTokenService contractTokenService;
 
     private static final String PAGE_NS = "econtracts";
-    private static final Duration PAGE_TTL = Duration.ofMinutes(5);
+    private static final Duration PAGE_TTL = Duration.ofMinutes(60);
 
     private final CachedPageService cachedPageService;
 
@@ -435,8 +435,6 @@ public class EContractServiceImpl implements EContractService {
             c.setStatus(EContractStatus.COMPLETED);
             contractRepo.save(c);
             log.info("[EContract] COMPLETED contractId={}", c.getId());
-
-            mapUserToHouse(c.getUserId(), c.getHouseId());
 
             sendContractCompletedEvent(c);
 
@@ -970,10 +968,12 @@ public class EContractServiceImpl implements EContractService {
     private void sendContractCompletedEvent(EContract contract) {
         try {
             String tenantEmail = null;
+            Boolean isNewAccount = null;
             try {
                 UserResponse tenant = userGrpc.getUserById(contract.getUserId().toString());
                 if (tenant != null && !tenant.getEmail().isBlank()) {
                     tenantEmail = tenant.getEmail();
+                    isNewAccount = !tenant.getIsEnabled();
                 }
             } catch (Exception e) {
                 log.warn("[EContract] Cannot fetch tenant email userId={}: {}", contract.getUserId(), e.getMessage());
@@ -983,6 +983,7 @@ public class EContractServiceImpl implements EContractService {
                     .contractId(contract.getId())
                     .tenantId(contract.getUserId())
                     .tenantEmail(tenantEmail)
+                    .isNewAccount(isNewAccount)
                     .houseId(contract.getHouseId())
                     .landlordId(contract.getCreatedBy())
                     .depositAmount(contract.getDepositAmount())

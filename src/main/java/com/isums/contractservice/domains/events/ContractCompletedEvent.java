@@ -10,6 +10,7 @@ public record ContractCompletedEvent(
         UUID contractId,
         UUID tenantId,
         String tenantEmail,
+        boolean isNewAccount,
         UUID houseId,
         UUID landlordId,
         Long depositAmount,
