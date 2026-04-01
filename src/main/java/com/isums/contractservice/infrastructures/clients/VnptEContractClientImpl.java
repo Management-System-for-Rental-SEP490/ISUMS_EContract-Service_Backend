@@ -377,8 +377,8 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         try {
             log.info("[VNPT] Downloading signed PDF downloadUrl={}", downloadUrl);
 
-            String raw = vnptRestClient.post()
-                    .uri("/internal/vnpt/forward-download")
+            byte[] pdfBytes = vnptRestClient.post()
+                    .uri("/internal/vnpt/forward-binary")
                     .contentType(MediaType.APPLICATION_JSON)
                     .header("X-Internal-Token", props.getGatewayToken())
                     .body(Map.of(
@@ -388,17 +388,15 @@ public class VnptEContractClientImpl implements VnptEContractClient {
                     ))
                     .exchange((req, res) -> {
                         if (res.getStatusCode().isError()) {
-                            String body = new String(res.getBody().readAllBytes());
-                            throw new IllegalStateException("Gateway download failed: HTTP "
-                                    + res.getStatusCode() + " " + body);
+                            throw new IllegalStateException("Gateway binary download failed: HTTP "
+                                    + res.getStatusCode());
                         }
-                        return new String(res.getBody().readAllBytes());
+                        return res.getBody().readAllBytes();
                     });
 
-            if (raw == null || raw.isBlank())
-                throw new IllegalStateException("Gateway returned empty body");
+            if (pdfBytes == null || pdfBytes.length == 0)
+                throw new IllegalStateException("Downloaded PDF is empty");
 
-            byte[] pdfBytes = Base64.getDecoder().decode(raw.trim());
             log.info("[VNPT] Signed PDF downloaded size={}KB", pdfBytes.length / 1024);
             return pdfBytes;
 
