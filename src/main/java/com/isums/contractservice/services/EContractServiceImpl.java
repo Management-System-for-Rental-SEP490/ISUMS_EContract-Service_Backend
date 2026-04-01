@@ -387,6 +387,7 @@ public class EContractServiceImpl implements EContractService {
             c.setStatus(EContractStatus.IN_PROGRESS);
             contractRepo.save(c);
             log.info("[EContract] IN_PROGRESS (landlord signed) contractId={}", c.getId());
+            updateSnapshotFromVnpt(c);
         }
 
         cachedPageService.evictAll(PAGE_NS);
@@ -999,39 +1000,68 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
-    private void fetchAndStoreSignedPdf(EContract contract) {
+    private void updateSnapshotFromVnpt(EContract contract) {
         try {
             VnptResult<VnptDocumentDto> docResult = vnptClient.getEContractById(
                     contract.getDocumentId(), vnptClient.getToken());
 
             if (docResult == null || docResult.getData() == null
                     || docResult.getData().downloadUrl() == null) {
-                log.warn("[EContract] No downloadUrl from VNPT contractId={} — sending event without PDF",
+                log.warn("[EContract] No downloadUrl from VNPT contractId={} — skip snapshot update",
+                        contract.getId());
+                return;
+            }
+
+            byte[] signedPdf = vnptClient.downloadSignedPdf(docResult.getData().downloadUrl());
+
+            if (signedPdf == null || signedPdf.length == 0) {
+                log.warn("[EContract] Downloaded PDF empty contractId={}", contract.getId());
+                return;
+            }
+
+            s3.deleteIfExists(contract.getSnapshotKey());
+            String newKey = s3.uploadContractPdf(signedPdf, contract.getId());
+            contract.setSnapshotKey(newKey);
+            contractRepo.save(contract);
+
+            log.info("[EContract] Snapshot updated contractId={} key={} size={}KB",
+                    contract.getId(), newKey, signedPdf.length / 1024);
+
+        } catch (Exception e) {
+            log.error("[EContract] updateSnapshotFromVnpt failed contractId={}: {}",
+                    contract.getId(), e.getMessage(), e);
+        }
+    }
+
+    private void fetchAndStoreSignedPdf(EContract contract) {
+        try {
+            VnptResult<VnptDocumentDto> docResult = vnptClient.getEContractById(
+                    contract.getDocumentId(), vnptClient.getToken());
+
+            if (docResult == null || docResult.getData() == null || docResult.getData().downloadUrl() == null) {
+                log.warn("[EContract] No downloadUrl contractId={} — sending event without PDF",
                         contract.getId());
                 sendContractCompletedEvent(contract, null);
                 return;
             }
 
-            String downloadUrl = docResult.getData().downloadUrl();
-            byte[] signedPdf = vnptClient.downloadSignedPdf(downloadUrl);
+            byte[] signedPdf = vnptClient.downloadSignedPdf(docResult.getData().downloadUrl());
 
             if (signedPdf == null || signedPdf.length == 0) {
-                log.warn("[EContract] Downloaded PDF empty contractId={}", contract.getId());
+                log.warn("[EContract] PDF empty contractId={}", contract.getId());
                 sendContractCompletedEvent(contract, null);
                 return;
             }
 
             s3.deleteIfExists(contract.getSnapshotKey());
             String signedKey = s3.uploadContractPdf(signedPdf, contract.getId());
-
             contract.setSnapshotKey(signedKey);
             contractRepo.save(contract);
 
             log.info("[EContract] Signed PDF stored contractId={} key={} size={}KB",
                     contract.getId(), signedKey, signedPdf.length / 1024);
 
-            String pdfUrl = s3.presignedUrl(signedKey, 365 * 24 * 60);
-
+            String pdfUrl = s3.presignedUrl(signedKey, 7 * 24 * 60);
             sendContractCompletedEvent(contract, pdfUrl);
 
         } catch (Exception e) {
