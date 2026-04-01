@@ -80,7 +80,7 @@ public class EContractServiceImpl implements EContractService {
     private final ContractTokenService contractTokenService;
 
     private static final String PAGE_NS = "econtracts";
-    private static final Duration PAGE_TTL = Duration.ofMinutes(5);
+    private static final Duration PAGE_TTL = Duration.ofMinutes(60);
 
     private final CachedPageService cachedPageService;
 
