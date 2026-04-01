@@ -22,4 +22,6 @@ public interface VnptEContractClient {
     VnptResult<ProcessResponse> signProcess(VnptProcessDto process);
 
     VnptResult<VnptDocumentDto> getEContractById(String documentId, String token);
+
+    byte[] downloadSignedPdf(String downloadUrl);
 }
