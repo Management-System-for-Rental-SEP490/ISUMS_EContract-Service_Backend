@@ -40,6 +40,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
@@ -522,6 +523,40 @@ public class EContractServiceImpl implements EContractService {
         return r.getData();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<TenantEContractDto> getMyContracts(UUID keycloakId) {
+        UUID userId = resolveInternalTenantId(keycloakId);
+        return contractRepo.findByUserIdOrderByCreatedAtDesc(userId)
+                .stream()
+                .map(c -> new TenantEContractDto(
+                        c.getId(),
+                        c.getName(),
+                        c.getHouseId(),
+                        c.getStartAt(),
+                        c.getEndAt(),
+                        c.getStatus(),
+                        resolvePdfUrlForTenant(c),
+                        c.getCreatedAt()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String getPdfUrlForTenant(UUID contractId, UUID keycloakId) {
+        EContract c = findById(contractId);
+
+        UUID userId = resolveInternalTenantId(keycloakId);
+
+        if (!c.getUserId().equals(userId)) {
+            throw new AccessDeniedException("You are not authorized to view this contract..");
+        }
+        if (c.getSnapshotKey() == null) {
+            throw new IllegalStateException("The contract is not yet available in PDF format. Please contact the landlord.");
+        }
+        return s3.presignedUrl(c.getSnapshotKey(), 30);
+    }
+
     private void sendWsStatus(UUID contractId, String status, String message) {
         try {
             Map<String, Object> payload = Map.of(
@@ -578,7 +613,7 @@ public class EContractServiceImpl implements EContractService {
 
             if (!node.path("isBackSide").asBoolean(false))
                 throw new OcrValidationException(OcrValidationException.NOT_BACK_SIDE, "Ảnh không phải mặt sau CCCD.");
-            
+
         } catch (OcrValidationException e) {
             throw e;
         } catch (Exception e) {
@@ -1088,6 +1123,17 @@ public class EContractServiceImpl implements EContractService {
         );
     }
 
+    private String resolvePdfUrlForTenant(EContract c) {
+        if (c.getSnapshotKey() == null) return null;
+        return switch (c.getStatus()) {
+            case PENDING_TENANT_REVIEW,
+                 READY,
+                 IN_PROGRESS,
+                 COMPLETED -> s3.presignedUrl(c.getSnapshotKey(), 60);
+            default -> null;
+        };
+    }
+
     private String tx(JsonNode n, String f) {
         JsonNode v = n.path(f);
         return v.isTextual() && !v.asText().isBlank() ? v.asText().trim() : null;
@@ -1110,5 +1156,10 @@ public class EContractServiceImpl implements EContractService {
     private EContract findByDocumentId(String documentId) {
         return contractRepo.findByDocumentId(documentId)
                 .orElseThrow(() -> new NotFoundException("Contract not found for documentId: " + documentId));
+    }
+
+    private UUID resolveInternalTenantId(UUID callerId) {
+        UserResponse user = userGrpc.getUserIdAndRoleByKeyCloakId(callerId.toString());
+        return UUID.fromString(user.getId());
     }
 }

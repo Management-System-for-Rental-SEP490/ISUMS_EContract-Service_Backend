@@ -41,4 +41,8 @@ public interface EContractService {
     EContractDto getOutSystem(String processCode);
 
     VnptDocumentDto getVnptDocumentById(String documentId);
+
+    List<TenantEContractDto> getMyContracts(UUID keycloakId);
+
+    String getPdfUrlForTenant(UUID contractId, UUID keycloakId);
 }

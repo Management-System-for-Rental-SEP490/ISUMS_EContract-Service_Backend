@@ -485,6 +485,56 @@ public class EContractController {
     }
 
     @Operation(
+            summary = "[TENANT] Danh sách hợp đồng của tôi",
+            description = """
+                    Trả về tất cả hợp đồng mà tenant đang là bên thuê (JWT required).
+                    Response không chứa `html` hay `snapshotKey`.
+                    `pdfUrl` có giá trị khi hợp đồng đang ở trạng thái PENDING_TENANT_REVIEW, READY,
+                    IN_PROGRESS hoặc COMPLETED.
+                    """,
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Thành công"),
+            @ApiResponse(responseCode = "401", description = "Chưa đăng nhập")
+    })
+    @GetMapping("/my")
+    @PreAuthorize("hasRole('TENANT')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<List<TenantEContractDto>> getMyContracts(
+            @AuthenticationPrincipal Jwt jwt) {
+
+        UUID keycloakId = UUID.fromString(jwt.getSubject());
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getMyContracts(keycloakId), "Success");
+    }
+
+    @Operation(
+            summary = "[TENANT] Lấy presigned URL PDF hợp đồng (JWT)",
+            description = """
+                    Trả về presigned S3 URL có hiệu lực **30 phút** để mobile render PDF.
+                    Tenant chỉ có thể xem hợp đồng của chính mình — sai userId trả 403.
+                    Gọi lại endpoint này khi URL hết hạn.
+                    """,
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Presigned URL hợp lệ 30 phút"),
+            @ApiResponse(responseCode = "403", description = "Không có quyền xem hợp đồng này"),
+            @ApiResponse(responseCode = "404", description = "Hợp đồng không tồn tại"),
+            @ApiResponse(responseCode = "400", description = "Hợp đồng chưa có PDF")
+    })
+    @GetMapping("/{id}/pdf")
+    @PreAuthorize("hasRole('TENANT')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<String> getContractPdf(
+            @AuthenticationPrincipal Jwt jwt,
+            @Parameter(description = "Contract ID", required = true)
+            @PathVariable UUID id) {
+
+        UUID keycloakId = UUID.fromString(jwt.getSubject());
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(
+                service.getPdfUrlForTenant(id, keycloakId), "Presigned URL hợp lệ trong 30 phút");
+    }
+
+    @Operation(
             summary = "[DEBUG] VNPT token 取得テスト",
             description = "開発環境でVNPT接続を確認するためにのみ使用します。",
             security = @SecurityRequirement(name = "bearerAuth")

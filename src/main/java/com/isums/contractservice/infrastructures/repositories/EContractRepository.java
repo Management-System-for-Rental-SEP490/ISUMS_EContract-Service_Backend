@@ -1,6 +1,7 @@
 package com.isums.contractservice.infrastructures.repositories;
 
 import com.isums.contractservice.domains.entities.EContract;
+import org.jspecify.annotations.NonNull;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -20,5 +21,5 @@ public interface EContractRepository extends JpaRepository<EContract, UUID> {
 
     Optional<EContract> findByHouseIdAndUserId(UUID houseId, UUID userId);
 
-    Page<EContract> findAll(Pageable pageable);
+    List<EContract> findByUserIdOrderByCreatedAtDesc(UUID userId);
 }
