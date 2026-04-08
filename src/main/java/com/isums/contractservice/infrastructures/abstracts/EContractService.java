@@ -45,4 +45,6 @@ public interface EContractService {
     List<TenantEContractDto> getMyContracts(UUID keycloakId);
 
     String getPdfUrlForTenant(UUID contractId, UUID keycloakId);
+
+    void confirmRefund(UUID contractId, ConfirmRefundRequest req);
 }

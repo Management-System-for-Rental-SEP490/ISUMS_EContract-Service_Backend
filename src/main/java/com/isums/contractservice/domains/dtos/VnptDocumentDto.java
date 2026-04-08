@@ -1,5 +1,7 @@
 package com.isums.contractservice.domains.dtos;
 
+import java.io.Serial;
+import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.List;
 
@@ -26,14 +28,8 @@ public record VnptDocumentDto(
         Integer pageSign,
         byte[] pdfBytes,
         String fileName
-) {
-    public void withSignMeta(String posA, String posB) {
-        new VnptDocumentDto(
-                id, createdDate, lastModifiedDate, expiryDate, completedDate,
-                validFrom, validTo, documentDate, contractValue,
-                customerCode, customerInformation, no, subject, downloadUrl,
-                status, waitingProcess, processes,
-                posA, posB, pageSign, pdfBytes, fileName
-        );
-    }
+) implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
 }
