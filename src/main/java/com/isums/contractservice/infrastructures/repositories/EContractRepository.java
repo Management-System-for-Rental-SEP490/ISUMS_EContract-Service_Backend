@@ -1,12 +1,14 @@
 package com.isums.contractservice.infrastructures.repositories;
 
 import com.isums.contractservice.domains.entities.EContract;
+import com.isums.contractservice.domains.enums.EContractStatus;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -24,4 +26,6 @@ public interface EContractRepository extends JpaRepository<EContract, UUID>, Jpa
     Optional<EContract> findByHouseIdAndUserId(UUID houseId, UUID userId);
 
     List<EContract> findByUserIdOrderByCreatedAtDesc(UUID userId);
+
+    List<EContract> findByStatusAndEndAtBefore(EContractStatus status, Instant endAt);
 }
