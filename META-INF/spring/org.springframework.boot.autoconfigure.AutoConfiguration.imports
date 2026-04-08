@@ -1,0 +1,4 @@
+common.kafkas.IsumKafkaAutoConfiguration
+common.paginations.configurations.IsumRedisAutoConfiguration
+common.paginations.cache.CachedPageService
+common.grpc.IssumsGrpcAutoConfiguration

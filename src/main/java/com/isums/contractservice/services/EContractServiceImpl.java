@@ -18,9 +18,11 @@ import com.isums.houseservice.grpc.HouseResponse;
 import com.isums.userservice.grpc.UserResponse;
 import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
+import common.paginations.cache.CachedPageService;
+import common.paginations.converters.SpringPageConverter;
 import common.paginations.dtos.PageRequest;
 import common.paginations.dtos.PageResponse;
-import common.paginations.services.CachedPageService;
+import common.paginations.specifications.SpecificationBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
@@ -36,10 +38,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.*;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.LinkedMultiValueMap;
@@ -160,9 +162,9 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     public PageResponse<EContractDto> getAll(PageRequest request) {
-        return cachedPageService.getOrLoad(PAGE_NS, request, PAGE_TTL,
-                new TypeReference<>() {
-                }, () -> loadPage(request)
+        return cachedPageService.getOrLoad(PAGE_NS, request, new TypeReference<>() {
+                },
+                () -> loadPage(request)
         );
     }
 
@@ -387,6 +389,7 @@ public class EContractServiceImpl implements EContractService {
             c.setStatus(EContractStatus.IN_PROGRESS);
             contractRepo.save(c);
             log.info("[EContract] IN_PROGRESS (landlord signed) contractId={}", c.getId());
+            updateSnapshotFromVnpt(c);
         }
 
         cachedPageService.evictAll(PAGE_NS);
@@ -416,10 +419,7 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(cacheNames = "allEContracts", allEntries = true),
-            @CacheEvict(cacheNames = "vnptProcessCode", key = "#process.processCode", allEntries = true)
-    })
+    @CacheEvict(cacheNames = "vnptProcessCode", key = "#process.processCode")
     public ProcessResponse signByTenant(VnptProcessDto process) {
         VnptResult<ProcessResponse> result = vnptClient.signProcess(process);
 
@@ -521,6 +521,40 @@ public class EContractServiceImpl implements EContractService {
         return r.getData();
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<TenantEContractDto> getMyContracts(UUID keycloakId) {
+        UUID userId = resolveInternalTenantId(keycloakId);
+        return contractRepo.findByUserIdOrderByCreatedAtDesc(userId)
+                .stream()
+                .map(c -> new TenantEContractDto(
+                        c.getId(),
+                        c.getName(),
+                        c.getHouseId(),
+                        c.getStartAt(),
+                        c.getEndAt(),
+                        c.getStatus(),
+                        resolvePdfUrlForTenant(c),
+                        c.getCreatedAt()))
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String getPdfUrlForTenant(UUID contractId, UUID keycloakId) {
+        EContract c = findById(contractId);
+
+        UUID userId = resolveInternalTenantId(keycloakId);
+
+        if (!c.getUserId().equals(userId)) {
+            throw new AccessDeniedException("You are not authorized to view this contract..");
+        }
+        if (c.getSnapshotKey() == null) {
+            throw new IllegalStateException("The contract is not yet available in PDF format. Please contact the landlord.");
+        }
+        return s3.presignedUrl(c.getSnapshotKey(), 30);
+    }
+
     private void sendWsStatus(UUID contractId, String status, String message) {
         try {
             Map<String, Object> payload = Map.of(
@@ -577,7 +611,7 @@ public class EContractServiceImpl implements EContractService {
 
             if (!node.path("isBackSide").asBoolean(false))
                 throw new OcrValidationException(OcrValidationException.NOT_BACK_SIDE, "Ảnh không phải mặt sau CCCD.");
-            
+
         } catch (OcrValidationException e) {
             throw e;
         } catch (Exception e) {
@@ -999,39 +1033,68 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
-    private void fetchAndStoreSignedPdf(EContract contract) {
+    private void updateSnapshotFromVnpt(EContract contract) {
         try {
             VnptResult<VnptDocumentDto> docResult = vnptClient.getEContractById(
                     contract.getDocumentId(), vnptClient.getToken());
 
             if (docResult == null || docResult.getData() == null
                     || docResult.getData().downloadUrl() == null) {
-                log.warn("[EContract] No downloadUrl from VNPT contractId={} — sending event without PDF",
+                log.warn("[EContract] No downloadUrl from VNPT contractId={} — skip snapshot update",
+                        contract.getId());
+                return;
+            }
+
+            byte[] signedPdf = vnptClient.downloadSignedPdf(docResult.getData().downloadUrl());
+
+            if (signedPdf == null || signedPdf.length == 0) {
+                log.warn("[EContract] Downloaded PDF empty contractId={}", contract.getId());
+                return;
+            }
+
+            s3.deleteIfExists(contract.getSnapshotKey());
+            String newKey = s3.uploadContractPdf(signedPdf, contract.getId());
+            contract.setSnapshotKey(newKey);
+            contractRepo.save(contract);
+
+            log.info("[EContract] Snapshot updated contractId={} key={} size={}KB",
+                    contract.getId(), newKey, signedPdf.length / 1024);
+
+        } catch (Exception e) {
+            log.error("[EContract] updateSnapshotFromVnpt failed contractId={}: {}",
+                    contract.getId(), e.getMessage(), e);
+        }
+    }
+
+    private void fetchAndStoreSignedPdf(EContract contract) {
+        try {
+            VnptResult<VnptDocumentDto> docResult = vnptClient.getEContractById(
+                    contract.getDocumentId(), vnptClient.getToken());
+
+            if (docResult == null || docResult.getData() == null || docResult.getData().downloadUrl() == null) {
+                log.warn("[EContract] No downloadUrl contractId={} — sending event without PDF",
                         contract.getId());
                 sendContractCompletedEvent(contract, null);
                 return;
             }
 
-            String downloadUrl = docResult.getData().downloadUrl();
-            byte[] signedPdf = vnptClient.downloadSignedPdf(downloadUrl);
+            byte[] signedPdf = vnptClient.downloadSignedPdf(docResult.getData().downloadUrl());
 
             if (signedPdf == null || signedPdf.length == 0) {
-                log.warn("[EContract] Downloaded PDF empty contractId={}", contract.getId());
+                log.warn("[EContract] PDF empty contractId={}", contract.getId());
                 sendContractCompletedEvent(contract, null);
                 return;
             }
 
             s3.deleteIfExists(contract.getSnapshotKey());
             String signedKey = s3.uploadContractPdf(signedPdf, contract.getId());
-
             contract.setSnapshotKey(signedKey);
             contractRepo.save(contract);
 
             log.info("[EContract] Signed PDF stored contractId={} key={} size={}KB",
                     contract.getId(), signedKey, signedPdf.length / 1024);
 
-            String pdfUrl = s3.presignedUrl(signedKey, 365 * 24 * 60);
-
+            String pdfUrl = s3.presignedUrl(signedKey, 7 * 24 * 60);
             sendContractCompletedEvent(contract, pdfUrl);
 
         } catch (Exception e) {
@@ -1042,20 +1105,41 @@ public class EContractServiceImpl implements EContractService {
     }
 
     private PageResponse<EContractDto> loadPage(PageRequest request) {
-        var pageable = org.springframework.data.domain.PageRequest.of(
-                request.page(),
-                request.validSize(),
-                Sort.by(request.sortBy()).descending());
+        EContractStatus statusFilter = request.<String>filterValue("status")
+                .map(s -> {
+                    try { return EContractStatus.valueOf(s.toUpperCase().trim()); }
+                    catch (IllegalArgumentException e) { return null; }
+                })
+                .orElse(null);
 
-        Page<EContract> result = contractRepo.findAll(pageable);
+        String statusesRaw = request.<String>filterValue("statuses").orElse(null);
 
-        return PageResponse.of(
-                mapper.contractsToDtoList(result.getContent()),
-                result.hasNext(),
-                result.getTotalElements(),
-                result.getTotalPages(),
-                result.getNumber()
-        );
+        String houseIdRaw = request.<String>filterValue("houseId").orElse(null);
+        UUID houseIdFilter = houseIdRaw != null ? UUID.fromString(houseIdRaw) : null;
+
+        var spec = SpecificationBuilder.<EContract>create()
+                .keywordLike(request.keyword(), "name", "tenantName")
+                .enumEq("status", statusFilter)
+                .enumInRaw("status", statusesRaw, EContractStatus.class)
+                .eq("houseId", houseIdFilter)
+                .build();
+
+        var pageable = SpringPageConverter.toPageable(request);
+
+        Page<EContract> page = contractRepo.findAll(spec, pageable);
+
+        return SpringPageConverter.fromPage(page, mapper::contractToDto);
+    }
+
+    private String resolvePdfUrlForTenant(EContract c) {
+        if (c.getSnapshotKey() == null) return null;
+        return switch (c.getStatus()) {
+            case PENDING_TENANT_REVIEW,
+                 READY,
+                 IN_PROGRESS,
+                 COMPLETED -> s3.presignedUrl(c.getSnapshotKey(), 60);
+            default -> null;
+        };
     }
 
     private String tx(JsonNode n, String f) {
@@ -1080,5 +1164,10 @@ public class EContractServiceImpl implements EContractService {
     private EContract findByDocumentId(String documentId) {
         return contractRepo.findByDocumentId(documentId)
                 .orElseThrow(() -> new NotFoundException("Contract not found for documentId: " + documentId));
+    }
+
+    private UUID resolveInternalTenantId(UUID callerId) {
+        UserResponse user = userGrpc.getUserIdAndRoleByKeyCloakId(callerId.toString());
+        return UUID.fromString(user.getId());
     }
 }

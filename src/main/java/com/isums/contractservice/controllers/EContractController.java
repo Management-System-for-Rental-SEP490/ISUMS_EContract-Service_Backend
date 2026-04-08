@@ -4,6 +4,7 @@ import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import common.paginations.dtos.PageRequest;
+import common.paginations.dtos.PageRequestParams;
 import common.paginations.dtos.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -14,6 +15,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -111,16 +113,8 @@ public class EContractController {
     @GetMapping
 //    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
     public com.isums.contractservice.domains.dtos.ApiResponse<PageResponse<EContractDto>> getAll(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
-            @RequestParam(required = false, defaultValue = "DESC") String sortDir) {
-
-        PageRequest request = PageRequest.of(page, size)
-                .withSortBy(sortBy)
-                .withSortDir(sortDir);
-
-        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getAll(request), "Success");
+            @ParameterObject @Valid @ModelAttribute PageRequestParams params) {
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getAll(params.toPageRequest()), "Success");
     }
 
     @Operation(
@@ -482,6 +476,56 @@ public class EContractController {
             @PathVariable String documentId) {
         return com.isums.contractservice.domains.dtos.ApiResponses.ok(
                 service.getVnptDocumentById(documentId), "Success");
+    }
+
+    @Operation(
+            summary = "[TENANT] Danh sách hợp đồng của tôi",
+            description = """
+                    Trả về tất cả hợp đồng mà tenant đang là bên thuê (JWT required).
+                    Response không chứa `html` hay `snapshotKey`.
+                    `pdfUrl` có giá trị khi hợp đồng đang ở trạng thái PENDING_TENANT_REVIEW, READY,
+                    IN_PROGRESS hoặc COMPLETED.
+                    """,
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Thành công"),
+            @ApiResponse(responseCode = "401", description = "Chưa đăng nhập")
+    })
+    @GetMapping("/my")
+    @PreAuthorize("hasRole('TENANT')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<List<TenantEContractDto>> getMyContracts(
+            @AuthenticationPrincipal Jwt jwt) {
+
+        UUID keycloakId = UUID.fromString(jwt.getSubject());
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getMyContracts(keycloakId), "Success");
+    }
+
+    @Operation(
+            summary = "[TENANT] Lấy presigned URL PDF hợp đồng (JWT)",
+            description = """
+                    Trả về presigned S3 URL có hiệu lực **30 phút** để mobile render PDF.
+                    Tenant chỉ có thể xem hợp đồng của chính mình — sai userId trả 403.
+                    Gọi lại endpoint này khi URL hết hạn.
+                    """,
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Presigned URL hợp lệ 30 phút"),
+            @ApiResponse(responseCode = "403", description = "Không có quyền xem hợp đồng này"),
+            @ApiResponse(responseCode = "404", description = "Hợp đồng không tồn tại"),
+            @ApiResponse(responseCode = "400", description = "Hợp đồng chưa có PDF")
+    })
+    @GetMapping("/{id}/pdf")
+    @PreAuthorize("hasRole('TENANT')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<String> getContractPdf(
+            @AuthenticationPrincipal Jwt jwt,
+            @Parameter(description = "Contract ID", required = true)
+            @PathVariable UUID id) {
+
+        UUID keycloakId = UUID.fromString(jwt.getSubject());
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(
+                service.getPdfUrlForTenant(id, keycloakId), "Presigned URL hợp lệ trong 30 phút");
     }
 
     @Operation(
