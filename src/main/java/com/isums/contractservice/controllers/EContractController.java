@@ -3,7 +3,6 @@ package com.isums.contractservice.controllers;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
-import common.paginations.dtos.PageRequest;
 import common.paginations.dtos.PageRequestParams;
 import common.paginations.dtos.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -526,6 +525,16 @@ public class EContractController {
         UUID keycloakId = UUID.fromString(jwt.getSubject());
         return com.isums.contractservice.domains.dtos.ApiResponses.ok(
                 service.getPdfUrlForTenant(id, keycloakId), "Presigned URL hợp lệ trong 30 phút");
+    }
+
+    @PutMapping("/{contractId}/confirm-refund")
+    @PreAuthorize("hasAnyRole('LANDLORD', 'MANAGER')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<Object> confirmRefund(
+            @PathVariable UUID contractId,
+            @RequestBody @Valid ConfirmRefundRequest req,
+            @AuthenticationPrincipal Jwt jwt) {
+        service.confirmRefund(contractId, req);
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(null, "Xác nhận hoàn cọc thành công");
     }
 
     @Operation(

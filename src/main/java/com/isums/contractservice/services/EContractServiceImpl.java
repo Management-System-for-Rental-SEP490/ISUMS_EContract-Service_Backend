@@ -555,6 +555,33 @@ public class EContractServiceImpl implements EContractService {
         return s3.presignedUrl(c.getSnapshotKey(), 30);
     }
 
+    @Transactional
+    public void confirmRefund(UUID contractId, ConfirmRefundRequest req) {
+        EContract contract = contractRepo.findById(contractId)
+                .orElseThrow(() -> new RuntimeException("Contract not found: " + contractId));
+
+        contract.getStatus().validateTransition(EContractStatus.DEPOSIT_REFUND_PENDING);
+        contract.setStatus(EContractStatus.DEPOSIT_REFUND_PENDING);
+        contractRepo.save(contract);
+
+        UserResponse tenant = userGrpc.getUserById(contract.getUserId().toString());
+
+        kafka.send("contract.deposit-refund.confirmed",
+                contractId.toString(),
+                DepositRefundConfirmedEvent.builder()
+                        .contractId(contractId)
+                        .houseId(contract.getHouseId())
+                        .tenantId(contract.getUserId())
+                        .tenantEmail(tenant.getEmail())
+                        .refundAmount(req.refundAmount())
+                        .note(req.note())
+                        .messageId(UUID.randomUUID().toString())
+                        .build());
+
+        log.info("[Contract] DEPOSIT_REFUND_PENDING contractId={} refundAmount={}",
+                contractId, req.refundAmount());
+    }
+
     private void sendWsStatus(UUID contractId, String status, String message) {
         try {
             Map<String, Object> payload = Map.of(
@@ -1107,8 +1134,11 @@ public class EContractServiceImpl implements EContractService {
     private PageResponse<EContractDto> loadPage(PageRequest request) {
         EContractStatus statusFilter = request.<String>filterValue("status")
                 .map(s -> {
-                    try { return EContractStatus.valueOf(s.toUpperCase().trim()); }
-                    catch (IllegalArgumentException e) { return null; }
+                    try {
+                        return EContractStatus.valueOf(s.toUpperCase().trim());
+                    } catch (IllegalArgumentException e) {
+                        return null;
+                    }
                 })
                 .orElse(null);
 
