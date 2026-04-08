@@ -4,6 +4,7 @@ import com.isums.contractservice.domains.entities.EContract;
 import com.isums.contractservice.domains.entities.RenewalNotificationLog;
 import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.enums.RenewalRequestStatus;
+import com.isums.contractservice.domains.events.RenewalReminderEvent;
 import com.isums.contractservice.domains.events.RenewalWindowOpenEvent;
 import com.isums.contractservice.domains.events.SendEmailEvent;
 import com.isums.contractservice.infrastructures.repositories.EContractRepository;
