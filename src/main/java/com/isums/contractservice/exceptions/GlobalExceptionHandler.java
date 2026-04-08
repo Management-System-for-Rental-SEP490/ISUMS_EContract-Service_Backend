@@ -121,4 +121,30 @@ public class GlobalExceptionHandler {
         );
         return ResponseEntity.status(res.getStatusCode()).body(res);
     }
+
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiResponse<Void>> handleForbidden(ForbiddenException ex) {
+        ApiResponse<Void> res = ApiResponses.fail(
+                HttpStatus.FORBIDDEN,
+                ex.getMessage(),
+                List.of(ApiError.builder()
+                        .code("FORBIDDEN")
+                        .message(ex.getMessage())
+                        .build())
+        );
+        return ResponseEntity.status(res.getStatusCode()).body(res);
+    }
+
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException ex) {
+        ApiResponse<Void> res = ApiResponses.fail(
+                HttpStatus.UNPROCESSABLE_CONTENT,
+                ex.getMessage(),
+                List.of(ApiError.builder()
+                        .code("BUSINESS_RULE_VIOLATION")
+                        .message(ex.getMessage())
+                        .build())
+        );
+        return ResponseEntity.status(res.getStatusCode()).body(res);
+    }
 }

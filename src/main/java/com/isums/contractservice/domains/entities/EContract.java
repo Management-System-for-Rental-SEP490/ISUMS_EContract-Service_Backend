@@ -94,6 +94,9 @@ public class EContract implements Serializable {
     @Column(name = "terminated_by")
     private UUID terminatedBy;
 
+    @Column(name = "renew_notice_days")
+    private Integer renewNoticeDays;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EContractStatus status;
