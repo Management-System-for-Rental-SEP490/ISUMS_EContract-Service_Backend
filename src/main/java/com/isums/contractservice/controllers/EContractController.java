@@ -4,6 +4,7 @@ import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import common.paginations.dtos.PageRequest;
+import common.paginations.dtos.PageRequestParams;
 import common.paginations.dtos.PageResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -14,6 +15,7 @@ import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.http.MediaType;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -111,16 +113,8 @@ public class EContractController {
     @GetMapping
 //    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
     public com.isums.contractservice.domains.dtos.ApiResponse<PageResponse<EContractDto>> getAll(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false, defaultValue = "createdAt") String sortBy,
-            @RequestParam(required = false, defaultValue = "DESC") String sortDir) {
-
-        PageRequest request = PageRequest.of(page, size)
-                .withSortBy(sortBy)
-                .withSortDir(sortDir);
-
-        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getAll(request), "Success");
+            @ParameterObject @Valid @ModelAttribute PageRequestParams params) {
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getAll(params.toPageRequest()), "Success");
     }
 
     @Operation(

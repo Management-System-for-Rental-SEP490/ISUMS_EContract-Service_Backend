@@ -18,9 +18,11 @@ import com.isums.houseservice.grpc.HouseResponse;
 import com.isums.userservice.grpc.UserResponse;
 import com.openhtmltopdf.outputdevice.helper.BaseRendererBuilder;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
+import common.paginations.cache.CachedPageService;
+import common.paginations.converters.SpringPageConverter;
 import common.paginations.dtos.PageRequest;
 import common.paginations.dtos.PageResponse;
-import common.paginations.services.CachedPageService;
+import common.paginations.specifications.SpecificationBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
@@ -36,7 +38,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cache.annotation.*;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -161,9 +162,9 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     public PageResponse<EContractDto> getAll(PageRequest request) {
-        return cachedPageService.getOrLoad(PAGE_NS, request, PAGE_TTL,
-                new TypeReference<>() {
-                }, () -> loadPage(request)
+        return cachedPageService.getOrLoad(PAGE_NS, request, new TypeReference<>() {
+                },
+                () -> loadPage(request)
         );
     }
 
@@ -418,10 +419,7 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
-    @Caching(evict = {
-            @CacheEvict(cacheNames = "allEContracts", allEntries = true),
-            @CacheEvict(cacheNames = "vnptProcessCode", key = "#process.processCode", allEntries = true)
-    })
+    @CacheEvict(cacheNames = "vnptProcessCode", key = "#process.processCode")
     public ProcessResponse signByTenant(VnptProcessDto process) {
         VnptResult<ProcessResponse> result = vnptClient.signProcess(process);
 
@@ -1107,20 +1105,30 @@ public class EContractServiceImpl implements EContractService {
     }
 
     private PageResponse<EContractDto> loadPage(PageRequest request) {
-        var pageable = org.springframework.data.domain.PageRequest.of(
-                request.page(),
-                request.validSize(),
-                Sort.by(request.sortBy()).descending());
+        EContractStatus statusFilter = request.<String>filterValue("status")
+                .map(s -> {
+                    try { return EContractStatus.valueOf(s.toUpperCase().trim()); }
+                    catch (IllegalArgumentException e) { return null; }
+                })
+                .orElse(null);
 
-        Page<EContract> result = contractRepo.findAll(pageable);
+        String statusesRaw = request.<String>filterValue("statuses").orElse(null);
 
-        return PageResponse.of(
-                mapper.contractsToDtoList(result.getContent()),
-                result.hasNext(),
-                result.getTotalElements(),
-                result.getTotalPages(),
-                result.getNumber()
-        );
+        String houseIdRaw = request.<String>filterValue("houseId").orElse(null);
+        UUID houseIdFilter = houseIdRaw != null ? UUID.fromString(houseIdRaw) : null;
+
+        var spec = SpecificationBuilder.<EContract>create()
+                .keywordLike(request.keyword(), "name", "tenantName")
+                .enumEq("status", statusFilter)
+                .enumInRaw("status", statusesRaw, EContractStatus.class)
+                .eq("houseId", houseIdFilter)
+                .build();
+
+        var pageable = SpringPageConverter.toPageable(request);
+
+        Page<EContract> page = contractRepo.findAll(spec, pageable);
+
+        return SpringPageConverter.fromPage(page, mapper::contractToDto);
     }
 
     private String resolvePdfUrlForTenant(EContract c) {
