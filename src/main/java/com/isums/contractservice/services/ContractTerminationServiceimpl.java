@@ -1,6 +1,7 @@
 package com.isums.contractservice.services;
 
 import com.isums.contractservice.domains.dtos.CompleteInspectionRequest;
+import com.isums.contractservice.domains.dtos.ContractInspectionDto;
 import com.isums.contractservice.domains.entities.ContractInspection;
 import com.isums.contractservice.domains.entities.EContract;
 import com.isums.contractservice.domains.enums.ContractInspectionStatus;
@@ -10,6 +11,7 @@ import com.isums.contractservice.domains.events.InspectionDoneNotifyEvent;
 import com.isums.contractservice.domains.events.InspectionScheduledEvent;
 import com.isums.contractservice.domains.events.JobEvent;
 import com.isums.contractservice.domains.events.SendEmailEvent;
+import com.isums.contractservice.exceptions.NotFoundException;
 import com.isums.contractservice.infrastructures.abstracts.ContractTerminationService;
 import com.isums.contractservice.infrastructures.grpcs.UserGrpcClient;
 import com.isums.contractservice.infrastructures.repositories.ContractInspectionRepository;
@@ -71,6 +73,23 @@ public class ContractTerminationServiceimpl implements ContractTerminationServic
 
         log.info("[Contract] PENDING_TERMINATION contractId={} inspectionId={}",
                 contract.getId(), inspection.getId());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ContractInspectionDto getInspectionById(UUID inspectionId) {
+        return ContractInspectionDto.from(contractInspectionRepo.findById(inspectionId)
+                .orElseThrow(() -> new NotFoundException("Inspection not found: " + inspectionId))
+        );
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ContractInspectionDto getInspectionByContractId(UUID contractId) {
+        return ContractInspectionDto.from(
+                contractInspectionRepo.findByContractId(contractId)
+                        .orElseThrow(() -> new NotFoundException("Inspection not found for contractId: " + contractId))
+        );
     }
 
     @Transactional
