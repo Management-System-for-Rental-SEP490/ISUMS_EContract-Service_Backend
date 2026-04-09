@@ -28,4 +28,6 @@ public interface EContractRepository extends JpaRepository<EContract, UUID>, Jpa
     List<EContract> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
     List<EContract> findByStatusAndEndAtBefore(EContractStatus status, Instant endAt);
+
+    List<EContract> findByStatusAndEndAtBetween(EContractStatus status, Instant from, Instant to);
 }

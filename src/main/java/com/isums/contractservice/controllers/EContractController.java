@@ -537,6 +537,17 @@ public class EContractController {
         return com.isums.contractservice.domains.dtos.ApiResponses.ok(null, "Xác nhận hoàn cọc thành công");
     }
 
+    @PostMapping("/{contractId}/clone-for-renewal")
+    @PreAuthorize("hasAnyRole('LANDLORD', 'MANAGER')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<EContractDto> cloneForRenewal(
+            @PathVariable UUID contractId,
+            @RequestBody @Valid CloneForRenewalRequest req,
+            @AuthenticationPrincipal Jwt jwt) {
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(
+                service.cloneForRenewal(contractId, req, actorId(jwt), jwt.getTokenValue()),
+                "Đã tạo hợp đồng gia hạn");
+    }
+
     @Operation(
             summary = "[DEBUG] VNPT token 取得テスト",
             description = "開発環境でVNPT接続を確認するためにのみ使用します。",

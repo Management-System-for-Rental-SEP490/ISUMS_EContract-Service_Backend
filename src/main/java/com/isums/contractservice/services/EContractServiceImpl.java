@@ -6,6 +6,7 @@ import com.isums.assetservice.grpc.AssetItemDto;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.domains.entities.*;
 import com.isums.contractservice.domains.enums.EContractStatus;
+import com.isums.contractservice.domains.enums.RenewalRequestStatus;
 import com.isums.contractservice.domains.events.*;
 import com.isums.contractservice.exceptions.NotFoundException;
 import com.isums.contractservice.exceptions.OcrValidationException;
@@ -79,6 +80,8 @@ public class EContractServiceImpl implements EContractService {
     private final ObjectMapper json;
     private final KeycloakAdminServiceImpl keycloakAdmin;
     private final ContractTokenService contractTokenService;
+    private final RenewalRequestRepository renewalRequestRepo;
+    private final RenewalServiceImpl renewalService;
 
     private static final String PAGE_NS = "econtracts";
     private static final Duration PAGE_TTL = Duration.ofMinutes(60);
@@ -582,6 +585,40 @@ public class EContractServiceImpl implements EContractService {
                 contractId, req.refundAmount());
     }
 
+    @Transactional
+    public EContractDto cloneForRenewal(UUID oldContractId, CloneForRenewalRequest req, UUID actorId, String jwtToken) {
+        EContract old = findById(oldContractId);
+
+        UserResponse tenant = userGrpc.getUserById(old.getUserId().toString());
+
+        CreateEContractRequest newReq = CreateEContractRequest.builder()
+                .isNewAccount(false)
+                .name(old.getTenantName())
+                .email(tenant.getEmail())
+                .houseId(old.getHouseId())
+                .startDate(req.newStartDate())
+                .endDate(req.newEndDate())
+                .rentAmount(req.newRentAmount())
+                .payDate(old.getPayDate())
+                .depositAmount(old.getDepositAmount())
+                .depositDate(req.newStartDate())
+                .handoverDate(req.newStartDate())
+                .lateDays(old.getLateDays())
+                .latePenaltyPercent(old.getLatePenaltyPercent())
+                .depositRefundDays(old.getDepositRefundDays())
+                .renewNoticeDays(old.getRenewNoticeDays() != null
+                        ? old.getRenewNoticeDays() : 30)
+                .build();
+
+        EContractDto newContract = createDraft(actorId, jwtToken, newReq);
+
+        if (req.renewalRequestId() != null) {
+            renewalService.markNewContractDrafted(req.renewalRequestId(), newContract.id());
+        }
+
+        return newContract;
+    }
+
     private void sendWsStatus(UUID contractId, String status, String message) {
         try {
             Map<String, Object> payload = Map.of(
@@ -799,6 +836,7 @@ public class EContractServiceImpl implements EContractService {
                 .payDate(req.payDate()).lateDays(req.lateDaysOrDefault())
                 .latePenaltyPercent(req.latePenaltyPercentOrDefault())
                 .depositRefundDays(req.depositRefundDaysOrDefault())
+                .renewNoticeDays(req.renewNoticeDaysOrDefault())
                 .handoverDate(req.handoverDate())
                 .tenantIdentityNumber(req.identityNumber())
                 .tenantName(req.name()).createdBy(actorId).build();
@@ -1055,6 +1093,14 @@ public class EContractServiceImpl implements EContractService {
                         else
                             log.info("[EContract] Kafka OK contractId={}", contract.getId());
                     });
+
+            renewalRequestRepo.findByNewContractId(contract.getId()).ifPresent(r -> {
+                r.setStatus(RenewalRequestStatus.COMPLETED);
+                r.setResolvedAt(Instant.now());
+                renewalRequestRepo.save(r);
+                log.info("[Renewal] Auto-completed renewalRequestId={} newContractId={}",
+                        r.getId(), contract.getId());
+            });
         } catch (Exception e) {
             log.error("[EContract] sendContractCompletedEvent failed contractId={}: {}", contract.getId(), e.getMessage(), e);
         }

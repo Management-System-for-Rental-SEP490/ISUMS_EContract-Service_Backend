@@ -1,11 +1,13 @@
 package com.isums.contractservice.domains.dtos;
 
 import jakarta.validation.constraints.*;
+import lombok.Builder;
 import org.jspecify.annotations.Nullable;
 
 import java.time.Instant;
 import java.util.UUID;
 
+@Builder
 public record CreateEContractRequest(
         @NotNull Boolean isNewAccount,
         @NotBlank String name,

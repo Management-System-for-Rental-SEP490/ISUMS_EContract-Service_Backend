@@ -47,4 +47,6 @@ public interface EContractService {
     String getPdfUrlForTenant(UUID contractId, UUID keycloakId);
 
     void confirmRefund(UUID contractId, ConfirmRefundRequest req);
+
+    EContractDto cloneForRenewal(UUID oldContractId, CloneForRenewalRequest req, UUID actorId, String jwtToken);
 }
