@@ -42,6 +42,11 @@ public class MaintenanceEventListeners {
             JobCompletedEvent event = objectMapper.readValue(
                     record.value(), JobCompletedEvent.class);
 
+            if (!"CHECK_OUT".equals(event.getInspectionType())) {
+                ack.acknowledge();
+                return;
+            }
+
             if (event.getContractId() == null) {
                 log.warn("[Contract] InspectionDone missing contractId, skip");
                 ack.acknowledge();

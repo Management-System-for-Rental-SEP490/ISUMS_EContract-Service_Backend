@@ -1097,6 +1097,16 @@ public class EContractServiceImpl implements EContractService {
                             log.info("[EContract] Kafka OK contractId={}", contract.getId());
                     });
 
+            kafka.send("job.created",
+                    contract.getId().toString(),
+                    JobCreatedEvent.builder()
+                            .referenceId(contract.getId())
+                            .houseId(contract.getHouseId())
+                            .referenceType("INSPECTION")
+                            .type("CHECK_IN")
+                            .messageId(UUID.randomUUID().toString())
+                            .build());
+
             renewalRequestRepo.findByNewContractId(contract.getId()).ifPresent(r -> {
                 r.setStatus(RenewalRequestStatus.COMPLETED);
                 r.setResolvedAt(Instant.now());

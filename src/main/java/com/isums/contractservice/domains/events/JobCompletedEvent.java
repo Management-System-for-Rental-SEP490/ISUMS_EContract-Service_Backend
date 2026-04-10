@@ -14,6 +14,8 @@ public class JobCompletedEvent {
     private UUID slotId;
     private UUID staffId;
     private UUID contractId;
+    private Long deductionAmount;
+    private String inspectionType;
     private String referenceType;
     private String action;
 }
