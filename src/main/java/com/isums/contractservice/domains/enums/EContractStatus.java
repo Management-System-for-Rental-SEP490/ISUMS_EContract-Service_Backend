@@ -23,14 +23,15 @@ public enum EContractStatus {
             Map.entry(PENDING_TENANT_REVIEW, Set.of(CORRECTING, READY, CANCELLED_BY_TENANT, PENDING_TENANT_REVIEW)),
             Map.entry(CORRECTING, Set.of(PENDING_TENANT_REVIEW, CANCELLED_BY_LANDLORD)),
             Map.entry(READY, Set.of(IN_PROGRESS, CANCELLED_BY_LANDLORD)),
-            Map.entry(COMPLETED, Set.of()),
+            Map.entry(IN_PROGRESS, Set.of(COMPLETED, CANCELLED_BY_TENANT, PENDING_TERMINATION)),
+            Map.entry(COMPLETED, Set.of(PENDING_TERMINATION)),
             Map.entry(CANCELLED_BY_TENANT, Set.of()),
             Map.entry(CANCELLED_BY_LANDLORD, Set.of()),
             Map.entry(DELETED, Set.of()),
-            Map.entry(IN_PROGRESS, Set.of(COMPLETED, CANCELLED_BY_TENANT, PENDING_TERMINATION)),
             Map.entry(PENDING_TERMINATION, Set.of(INSPECTION_DONE)),
             Map.entry(INSPECTION_DONE, Set.of(DEPOSIT_REFUND_PENDING)),
-            Map.entry(DEPOSIT_REFUND_PENDING, Set.of(TERMINATED))
+            Map.entry(DEPOSIT_REFUND_PENDING, Set.of(TERMINATED)),
+            Map.entry(TERMINATED, Set.of())
     );
 
     public void validateTransition(EContractStatus next) {

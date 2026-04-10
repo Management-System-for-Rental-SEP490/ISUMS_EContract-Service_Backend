@@ -453,7 +453,9 @@ public class EContractServiceImpl implements EContractService {
         contractTokenService.validateToken(contractToken, contractId);
 
         EContract c = findById(contractId);
-        if (c.getStatus() != EContractStatus.PENDING_TENANT_REVIEW && c.getStatus() != EContractStatus.IN_PROGRESS) {
+        if (c.getStatus() != EContractStatus.PENDING_TENANT_REVIEW
+                && c.getStatus() != EContractStatus.IN_PROGRESS
+                && c.getStatus() != EContractStatus.COMPLETED) {
             throw new IllegalStateException("Tenant chỉ huỷ được ở PENDING_TENANT_REVIEW hoặc IN_PROGRESS. Hiện tại: " + c.getStatus());
         }
         c.setStatus(EContractStatus.CANCELLED_BY_TENANT);
@@ -839,6 +841,7 @@ public class EContractServiceImpl implements EContractService {
                 .renewNoticeDays(req.renewNoticeDaysOrDefault())
                 .handoverDate(req.handoverDate())
                 .tenantIdentityNumber(req.identityNumber())
+                .hasPowerCutClause(req.hasPowerCutClause() != null ? req.hasPowerCutClause() : false)
                 .tenantName(req.name()).createdBy(actorId).build();
         contractRepo.save(e);
         log.info("[EContract] Created DRAFT contractId={}", e.getId());

@@ -30,4 +30,8 @@ public interface EContractRepository extends JpaRepository<EContract, UUID>, Jpa
     List<EContract> findByStatusAndEndAtBefore(EContractStatus status, Instant endAt);
 
     List<EContract> findByStatusAndEndAtBetween(EContractStatus status, Instant from, Instant to);
+
+    List<EContract> findByStatusInAndEndAtBefore(List<EContractStatus> statuses, Instant endAt);
+
+    List<EContract> findByStatusInAndEndAtBetween(List<EContractStatus> statuses, Instant from, Instant to);
 }

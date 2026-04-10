@@ -24,8 +24,10 @@ public class ContractExpiryScheduler {
     public void processExpiredContracts() {
         Instant now = Instant.now();
 
-        List<EContract> expired = contractRepo.findByStatusAndEndAtBefore(EContractStatus.IN_PROGRESS, now);
-
+        List<EContract> expired = contractRepo.findByStatusInAndEndAtBefore(
+                List.of(EContractStatus.IN_PROGRESS, EContractStatus.COMPLETED),
+                now
+        );
         log.info("[ContractExpiry] Found {} expired contracts", expired.size());
 
         for (EContract contract : expired) {

@@ -17,6 +17,7 @@ public record CreateEContractRequest(
         @Nullable Instant dateOfIssue,
         @Nullable String placeOfIssue,
         @Nullable String tenantAddress,
+        @Nullable Boolean hasPowerCutClause,
 
         @NotNull UUID houseId,
         @NotNull Instant startDate,

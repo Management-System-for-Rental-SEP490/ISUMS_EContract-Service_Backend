@@ -97,6 +97,9 @@ public class EContract implements Serializable {
     @Column(name = "renew_notice_days")
     private Integer renewNoticeDays;
 
+    @Column(name = "has_power_cut_clause")
+    private Boolean hasPowerCutClause = false;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EContractStatus status;

@@ -1,7 +1,9 @@
 package com.isums.contractservice.controllers;
 
 import com.isums.contractservice.domains.dtos.*;
+import com.isums.contractservice.infrastructures.abstracts.ContractTerminationService;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
+import com.isums.contractservice.infrastructures.abstracts.PowerCutService;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
 import common.paginations.dtos.PageRequestParams;
 import common.paginations.dtos.PageResponse;
@@ -56,6 +58,8 @@ public class EContractController {
 
     private final EContractService service;
     private final VnptEContractClient vnptClient;
+    private final PowerCutService powerCutService;
+    private final ContractTerminationService terminationService;
 
     @Operation(
             summary = "新しい契約を作成",
@@ -546,6 +550,22 @@ public class EContractController {
         return com.isums.contractservice.domains.dtos.ApiResponses.ok(
                 service.cloneForRenewal(contractId, req, actorId(jwt), jwt.getTokenValue()),
                 "Đã tạo hợp đồng gia hạn");
+    }
+
+    @PutMapping("/{contractId}/confirm-power-cut")
+    @PreAuthorize("hasAnyRole('LANDLORD', 'MANAGER')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<Void> confirmPowerCut(@PathVariable UUID contractId, @AuthenticationPrincipal Jwt jwt) {
+        powerCutService.confirmPowerCut(contractId, actorId(jwt));
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(null, "Đã xác nhận cắt điện, sẽ thực hiện sau 24 giờ");
+    }
+
+    @PutMapping("/{contractId}/confirm-termination-overdue")
+    @PreAuthorize("hasAnyRole('LANDLORD', 'MANAGER')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<Void> confirmTerminationOverdue(
+            @PathVariable UUID contractId,
+            @AuthenticationPrincipal Jwt jwt) {
+        terminationService.confirmTerminationOverdue(contractId, actorId(jwt));
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(null, "Đã khởi động quy trình chấm dứt hợp đồng");
     }
 
     @Operation(

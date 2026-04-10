@@ -45,7 +45,10 @@ public class RenewalNotificationScheduler {
         Instant from = today.atStartOfDay(VN).toInstant();
         Instant to = today.plusDays(30).atStartOfDay(VN).toInstant();
 
-        List<EContract> contracts = contractRepo.findByStatusAndEndAtBetween(EContractStatus.IN_PROGRESS, from, to);
+        List<EContract> contracts = contractRepo.findByStatusInAndEndAtBetween(
+                List.of(EContractStatus.IN_PROGRESS, EContractStatus.COMPLETED),
+                from, to
+        );
 
         log.info("[RenewalScheduler] Checking {} contracts", contracts.size());
 
