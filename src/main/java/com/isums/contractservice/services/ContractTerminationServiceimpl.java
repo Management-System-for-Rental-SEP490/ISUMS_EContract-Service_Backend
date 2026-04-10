@@ -41,6 +41,7 @@ public class ContractTerminationServiceimpl implements ContractTerminationServic
                         .referenceId(contract.getId())
                         .houseId(contract.getHouseId())
                         .referenceType("INSPECTION")
+                        .type("CHECK_OUT")
                         .messageId(UUID.randomUUID().toString())
                         .build());
 

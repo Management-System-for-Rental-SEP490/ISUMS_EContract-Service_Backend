@@ -15,5 +15,6 @@ public class JobCreatedEvent {
     private UUID referenceId;
     private UUID houseId;
     private String referenceType;
+    private String type;
     private String messageId;
 }
