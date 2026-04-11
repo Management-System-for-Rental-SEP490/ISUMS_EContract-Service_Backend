@@ -438,6 +438,9 @@ public class EContractServiceImpl implements EContractService {
             contractRepo.save(c);
             log.info("[EContract] COMPLETED contractId={}", c.getId());
 
+            mapUserToHouse(c.getUserId(), c.getHouseId());
+            activateTenant(c.getUserId());
+
             fetchAndStoreSignedPdf(c);
 
             cachedPageService.evictAll(PAGE_NS);
