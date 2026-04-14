@@ -7,8 +7,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
-import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -113,8 +112,7 @@ public class S3Service {
         try (PDDocument doc = Loader.loadPDF(contractPdf);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-            PDPage page = new PDPage(
-                    new PDRectangle(PDRectangle.A4.getHeight(), PDRectangle.A4.getWidth()));
+            PDPage page = new PDPage(new PDRectangle(PDRectangle.A4.getHeight(), PDRectangle.A4.getWidth()));
             doc.addPage(page);
 
             float pageW = page.getMediaBox().getWidth();
@@ -132,8 +130,8 @@ public class S3Service {
             float frontW = frontImg.getWidth() * frontScale, frontH = frontImg.getHeight() * frontScale;
             float backW = backImg.getWidth() * backScale, backH = backImg.getHeight() * backScale;
 
-            PDType1Font fontBold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
-            PDType1Font fontNormal = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            PDType0Font fontBold   = loadFont(doc, "/fonts/SVN-Times New Roman 2 bold.ttf");
+            PDType0Font fontNormal = loadFont(doc, "/fonts/SVN-Times New Roman 2.ttf");
 
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 float baseY = pageH - margin - 60f;
@@ -166,6 +164,14 @@ public class S3Service {
         } catch (Exception e) {
             log.error("[S3] appendCccdPage failed", e);
             throw new IllegalStateException("Append CCCD page thất bại: " + e.getMessage(), e);
+        }
+    }
+
+    private PDType0Font loadFont(PDDocument doc, String path) throws IOException {
+        try (var stream = getClass().getResourceAsStream(path)) {
+            if (stream == null)
+                throw new IllegalStateException("Font not found: " + path);
+            return PDType0Font.load(doc, stream);
         }
     }
 

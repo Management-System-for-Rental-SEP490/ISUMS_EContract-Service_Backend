@@ -7,6 +7,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.client.RestClientResponseException;
@@ -91,6 +93,19 @@ public class GlobalExceptionHandler {
                 List.of(ApiError.builder().code("CONFLICT").message(ex.getMessage()).build())
         );
         return ResponseEntity.status(res.getStatusCode()).body(res);
+    }
+
+    @ExceptionHandler({AccessDeniedException.class, AuthorizationDeniedException.class})
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(Exception ex) {
+        ApiResponse<Void> res = ApiResponses.fail(
+                HttpStatus.FORBIDDEN,
+                "Access denied",
+                List.of(ApiError.builder()
+                        .code("FORBIDDEN")
+                        .message(ex.getMessage())
+                        .build())
+        );
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(res);
     }
 
     @ExceptionHandler(Exception.class)

@@ -94,7 +94,7 @@ public class EContractServiceImpl implements EContractService {
     @Value("${vnpt.landlord.username}")
     private String vnptLandlordUsername;
 
-    @Value("${app.contract.view-url:https://isums.pro/contracts}")
+    @Value("${app.contract.view-url:https://outsystem.isums.pro/contracts}")
     private String contractViewBaseUrl;
 
     @Value("${app.contract.pdf-url-ttl-minutes:30}")
@@ -438,8 +438,8 @@ public class EContractServiceImpl implements EContractService {
             contractRepo.save(c);
             log.info("[EContract] COMPLETED contractId={}", c.getId());
 
-            mapUserToHouse(c.getUserId(), c.getHouseId());
-            activateTenant(c.getUserId());
+//            mapUserToHouse(c.getUserId(), c.getHouseId());
+//            activateTenant(c.getUserId());
 
             fetchAndStoreSignedPdf(c);
 
@@ -651,7 +651,7 @@ public class EContractServiceImpl implements EContractService {
                     && !result.identityNumber().equals(expectedId))
                 throw new OcrValidationException(OcrValidationException.ID_MISMATCH, "Số CCCD không khớp hợp đồng.");
 
-            if (result.fullName() != null && expectedName != null) {
+            if (result.fullName() != null && expectedName != null && !expectedName.isBlank()) {
                 String normOcr = norm(result.fullName());
                 String normExpected = norm(expectedName);
                 if (!normOcr.equals(normExpected) && !normExpected.contains(normOcr) && !normOcr.contains(normExpected)) {

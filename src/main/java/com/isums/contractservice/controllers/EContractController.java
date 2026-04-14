@@ -2,6 +2,7 @@ package com.isums.contractservice.controllers;
 
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.ContractTerminationService;
+import com.isums.contractservice.infrastructures.abstracts.DashboardService;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.infrastructures.abstracts.PowerCutService;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
@@ -57,9 +58,32 @@ import java.util.UUID;
 public class EContractController {
 
     private final EContractService service;
+    private final DashboardService dashboardService;
     private final VnptEContractClient vnptClient;
     private final PowerCutService powerCutService;
     private final ContractTerminationService terminationService;
+
+    @Operation(
+            summary = "Dashboard thống kê hợp đồng & bất động sản",
+            description = """
+                    Trả về:
+                    - **propertyStats**: tổng BĐS, đang thuê, trống, sắp hết hạn (30 ngày)
+                    - **contractTimeSeries**: số HĐ tạo theo tháng (period=6M hoặc 1Y)
+                    - **contractStatusBreakdown**: số HĐ theo từng trạng thái
+                    """,
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @GetMapping("/dashboard")
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<DashboardResponse> dashboard(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam(defaultValue = "6M") String period,
+            org.springframework.security.core.Authentication auth) {
+        boolean isLandlord = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_LANDLORD"));
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(
+                dashboardService.getDashboard(actorId(jwt), period, isLandlord), "Success");
+    }
 
     @Operation(
             summary = "新しい契約を作成",

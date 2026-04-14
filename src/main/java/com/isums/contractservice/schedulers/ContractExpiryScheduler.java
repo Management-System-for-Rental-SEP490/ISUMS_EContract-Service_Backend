@@ -20,7 +20,7 @@ public class ContractExpiryScheduler {
     private final EContractRepository contractRepo;
     private final ContractTerminationService contractTerminationService;
 
-    @Scheduled(cron = "0 0 1 * * *", zone = "Asia/Ho_Chi_Minh")
+    @Scheduled(cron = "50 4 17 * * *", zone = "Asia/Ho_Chi_Minh")
     public void processExpiredContracts() {
         Instant now = Instant.now();
 

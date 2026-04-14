@@ -28,8 +28,5 @@ public record VnptDocumentDto(
         Integer pageSign,
         byte[] pdfBytes,
         String fileName
-) implements Serializable {
-
-    @Serial
-    private static final long serialVersionUID = 1L;
+) {
 }
