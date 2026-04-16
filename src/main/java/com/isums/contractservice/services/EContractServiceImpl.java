@@ -371,8 +371,26 @@ public class EContractServiceImpl implements EContractService {
         contractTokenService.invalidateToken(contractToken);
 
         cachedPageService.evictAll(PAGE_NS);
+        sendReadyForLandlordSignatureEvent(c);
 
         return sendResult.getData();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public void triggerReadyForLandlordSignatureNotification(UUID contractId) {
+        EContract contract = findById(contractId);
+
+        if (contract.getStatus() != EContractStatus.READY) {
+            throw new IllegalStateException(
+                    "Chỉ replay notification khi hợp đồng đang ở READY. Hiện tại: " + contract.getStatus());
+        }
+        if (contract.getCreatedBy() == null) {
+            throw new IllegalStateException(
+                    "Hợp đồng thiếu createdBy nên không xác định được người nhận notification.");
+        }
+
+        sendReadyForLandlordSignatureEvent(contract);
     }
 
     @Override
@@ -1119,6 +1137,38 @@ public class EContractServiceImpl implements EContractService {
             });
         } catch (Exception e) {
             log.error("[EContract] sendContractCompletedEvent failed contractId={}: {}", contract.getId(), e.getMessage(), e);
+        }
+    }
+
+    private void sendReadyForLandlordSignatureEvent(EContract contract) {
+        if (contract.getCreatedBy() == null) {
+            log.warn("[EContract] Skip ready notification because createdBy is null contractId={}", contract.getId());
+            return;
+        }
+
+        try {
+            ContractReadyForLandlordSignatureEvent event = ContractReadyForLandlordSignatureEvent.builder()
+                    .messageId(UUID.randomUUID().toString())
+                    .contractId(contract.getId())
+                    .recipientUserId(contract.getCreatedBy())
+                    .tenantId(contract.getUserId())
+                    .tenantName(contract.getTenantName())
+                    .contractName(contract.getName())
+                    .documentId(contract.getDocumentId())
+                    .build();
+
+            kafka.send("contract.ready-for-landlord-signature", contract.getId().toString(), event)
+                    .whenComplete((res, ex) -> {
+                        if (ex != null) {
+                            log.error("[EContract] Kafka FAILED ready-for-landlord-signature contractId={}: {}",
+                                    contract.getId(), ex.getMessage(), ex);
+                        } else {
+                            log.info("[EContract] Kafka OK ready-for-landlord-signature contractId={}", contract.getId());
+                        }
+                    });
+        } catch (Exception e) {
+            log.error("[EContract] sendReadyForLandlordSignatureEvent failed contractId={}: {}",
+                    contract.getId(), e.getMessage(), e);
         }
     }
 

@@ -391,6 +391,31 @@ public class EContractController {
     }
 
     @Operation(
+            summary = "[DEBUG] Replay notification khi tenant đã xác nhận CCCD",
+            description = """
+                    Gọi lại đúng Kafka event `contract.ready-for-landlord-signature` cho 1 hợp đồng đang ở trạng thái `READY`.
+                    
+                    Dùng để test UI notification mà không cần chạy lại full flow tạo hợp đồng -> tenant upload CCCD.
+                    Endpoint này **không** đổi trạng thái hợp đồng, chỉ replay event thông báo cho người tạo hợp đồng.
+                    """,
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Đã đẩy lại event notification"),
+            @ApiResponse(responseCode = "403", description = "Chỉ MANAGER được phép test endpoint này"),
+            @ApiResponse(responseCode = "404", description = "Không tìm thấy hợp đồng"),
+            @ApiResponse(responseCode = "422", description = "Hợp đồng chưa ở READY hoặc thiếu recipient")
+    })
+    @PostMapping("/{contractId}/notifications/ready-for-landlord-signature/test")
+    @PreAuthorize("hasRole('MANAGER')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<Void> testReadyForLandlordSignatureNotification(
+            @Parameter(description = "Contract ID", required = true) @PathVariable UUID contractId) {
+        service.triggerReadyForLandlordSignatureNotification(contractId);
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(
+                null, "Đã replay notification landlord ký");
+    }
+
+    @Operation(
             summary = "[TENANT] 契約を拒否 / キャンセル",
             description = """
                     Tenant が契約を拒否します。

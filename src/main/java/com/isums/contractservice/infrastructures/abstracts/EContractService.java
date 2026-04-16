@@ -28,6 +28,8 @@ public interface EContractService {
 
     VnptDocumentDto tenantConfirmWithCccd(UUID contractId, MultipartFile frontImage, MultipartFile backImage, String contractToken);
 
+    void triggerReadyForLandlordSignatureNotification(UUID contractId);
+
     ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode);
 
     ProcessResponse signByTenant(VnptProcessDto process);
