@@ -2,6 +2,7 @@ package com.isums.contractservice.services;
 
 import com.isums.contractservice.domains.entities.EContract;
 import com.isums.contractservice.domains.enums.EContractStatus;
+import com.isums.contractservice.domains.events.InspectionScheduledEvent;
 import com.isums.contractservice.domains.events.JobCreatedEvent;
 import com.isums.contractservice.domains.events.SendEmailEvent;
 import com.isums.contractservice.exceptions.BusinessException;
@@ -87,6 +88,13 @@ class ContractTerminationServiceimplTest {
             SendEmailEvent mail = (SendEmailEvent) mailCap.getValue();
             assertThat(mail.getTo()).isEqualTo("m@ex.com");
             assertThat(mail.getTemplateCode()).isEqualTo("contract_expired_inspection_scheduled");
+
+            ArgumentCaptor<Object> inspectionCap = ArgumentCaptor.forClass(Object.class);
+            verify(kafka).send(eq("contract.inspection.scheduled"), anyString(), inspectionCap.capture());
+            InspectionScheduledEvent inspectionEvent = (InspectionScheduledEvent) inspectionCap.getValue();
+            assertThat(inspectionEvent.getContractId()).isEqualTo(contractId);
+            assertThat(inspectionEvent.getHouseId()).isEqualTo(c.getHouseId());
+            assertThat(inspectionEvent.getManagerId()).isEqualTo(managerId);
         }
 
         @Test

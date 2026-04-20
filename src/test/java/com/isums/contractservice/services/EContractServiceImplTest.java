@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.domains.entities.EContract;
 import com.isums.contractservice.domains.enums.EContractStatus;
+import com.isums.contractservice.domains.events.ContractReadyForLandlordSignatureEvent;
 import com.isums.contractservice.domains.events.DepositRefundConfirmedEvent;
 import com.isums.contractservice.exceptions.NotFoundException;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
@@ -44,6 +45,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
@@ -547,6 +549,92 @@ class EContractServiceImplTest {
             assertThatThrownBy(() -> service.confirmRefund(contractId,
                     new ConfirmRefundRequest(1L, null)))
                     .isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("sendReadyForLandlordSignatureEvent")
+    class SendReadyForLandlordSignatureEvent {
+
+        @Test
+        @DisplayName("publishes ready notification event for landlord or manager")
+        void publishesReadyEvent() {
+            EContract c = contract(EContractStatus.READY);
+            c.setName("Lease April");
+            c.setDocumentId("doc-123");
+            doReturn(CompletableFuture.completedFuture(null))
+                    .when(kafka).send(eq("contract.ready-for-landlord-signature"), eq(contractId.toString()), any());
+
+            ReflectionTestUtils.invokeMethod(service, "sendReadyForLandlordSignatureEvent", c);
+
+            ArgumentCaptor<Object> cap = ArgumentCaptor.forClass(Object.class);
+            verify(kafka).send(eq("contract.ready-for-landlord-signature"), eq(contractId.toString()), cap.capture());
+
+            ContractReadyForLandlordSignatureEvent event = (ContractReadyForLandlordSignatureEvent) cap.getValue();
+            assertThat(event.contractId()).isEqualTo(contractId);
+            assertThat(event.recipientUserId()).isEqualTo(actorId);
+            assertThat(event.tenantId()).isEqualTo(tenantId);
+            assertThat(event.tenantName()).isEqualTo("Alice");
+            assertThat(event.contractName()).isEqualTo("Lease April");
+            assertThat(event.documentId()).isEqualTo("doc-123");
+            assertThat(event.messageId()).isNotBlank();
+        }
+
+        @Test
+        @DisplayName("skips publish when recipient missing")
+        void skipsWhenRecipientMissing() {
+            EContract c = contract(EContractStatus.READY);
+            c.setCreatedBy(null);
+
+            ReflectionTestUtils.invokeMethod(service, "sendReadyForLandlordSignatureEvent", c);
+
+            verify(kafka, never()).send(eq("contract.ready-for-landlord-signature"), anyString(), any());
+        }
+    }
+
+    @Nested
+    @DisplayName("triggerReadyForLandlordSignatureNotification")
+    class TriggerReadyForLandlordSignatureNotification {
+
+        @Test
+        @DisplayName("replays ready notification for READY contract")
+        void replaysForReadyContract() {
+            EContract c = contract(EContractStatus.READY);
+            when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
+            doReturn(CompletableFuture.completedFuture(null))
+                    .when(kafka).send(eq("contract.ready-for-landlord-signature"), eq(contractId.toString()), any());
+
+            service.triggerReadyForLandlordSignatureNotification(contractId);
+
+            verify(kafka).send(eq("contract.ready-for-landlord-signature"), eq(contractId.toString()), any());
+        }
+
+        @Test
+        @DisplayName("throws when contract is not READY")
+        void throwsWhenContractNotReady() {
+            EContract c = contract(EContractStatus.PENDING_TENANT_REVIEW);
+            when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
+
+            assertThatThrownBy(() -> service.triggerReadyForLandlordSignatureNotification(contractId))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("READY")
+                    .hasMessageContaining("PENDING_TENANT_REVIEW");
+
+            verify(kafka, never()).send(eq("contract.ready-for-landlord-signature"), anyString(), any());
+        }
+
+        @Test
+        @DisplayName("throws when recipient missing")
+        void throwsWhenRecipientMissing() {
+            EContract c = contract(EContractStatus.READY);
+            c.setCreatedBy(null);
+            when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
+
+            assertThatThrownBy(() -> service.triggerReadyForLandlordSignatureNotification(contractId))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("createdBy");
+
+            verify(kafka, never()).send(eq("contract.ready-for-landlord-signature"), anyString(), any());
         }
     }
 

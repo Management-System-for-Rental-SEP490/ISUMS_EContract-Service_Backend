@@ -2,6 +2,7 @@ package com.isums.contractservice.services;
 
 import com.isums.contractservice.domains.entities.EContract;
 import com.isums.contractservice.domains.enums.EContractStatus;
+import com.isums.contractservice.domains.events.InspectionScheduledEvent;
 import com.isums.contractservice.domains.events.JobCreatedEvent;
 import com.isums.contractservice.domains.events.SendEmailEvent;
 import com.isums.contractservice.exceptions.BusinessException;
@@ -42,6 +43,17 @@ public class ContractTerminationServiceimpl implements ContractTerminationServic
                         .houseId(contract.getHouseId())
                         .referenceType("INSPECTION")
                         .type("CHECK_OUT")
+                        .messageId(UUID.randomUUID().toString())
+                        .build());
+
+        kafka.send("contract.inspection.scheduled",
+                contract.getId().toString(),
+                InspectionScheduledEvent.builder()
+                        .contractId(contract.getId())
+                        .inspectionId(contract.getId())
+                        .houseId(contract.getHouseId())
+                        .managerId(contract.getCreatedBy())
+                        .tenantName(contract.getTenantName())
                         .messageId(UUID.randomUUID().toString())
                         .build());
 

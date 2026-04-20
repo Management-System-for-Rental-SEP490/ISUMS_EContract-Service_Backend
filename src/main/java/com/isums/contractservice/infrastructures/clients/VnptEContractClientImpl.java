@@ -7,8 +7,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.isums.contractservice.configurations.VnptEcontractProperties;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.env.Environment;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
@@ -29,13 +30,28 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class VnptEContractClientImpl implements VnptEContractClient {
 
     private final RestClient vnptRestClient;
+    private final RestClient directVnptRestClient;
     private final VnptEcontractProperties props;
+    private final Environment environment;
     private final ObjectMapper mapper;
+
+    public VnptEContractClientImpl(
+            @Qualifier("vnptRestClient") RestClient vnptRestClient,
+            @Qualifier("directVnptRestClient") RestClient directVnptRestClient,
+            VnptEcontractProperties props,
+            Environment environment,
+            ObjectMapper mapper
+    ) {
+        this.vnptRestClient = vnptRestClient;
+        this.directVnptRestClient = directVnptRestClient;
+        this.props = props;
+        this.environment = environment;
+        this.mapper = mapper;
+    }
 
     public record ProcessCodeLoginRequest(String processCode) {
     }
@@ -86,57 +102,182 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         }
     }
 
+    private String directCall(String vnptPath, HttpMethod method, Object body, Map<String, String> headers) {
+        try {
+            RestClient.RequestBodySpec request = directVnptRestClient.method(method).uri(vnptPath);
+            if (headers != null && !headers.isEmpty()) {
+                request.headers(httpHeaders -> headers.forEach(httpHeaders::set));
+            }
+
+            if (body == null) {
+                return request.retrieve().body(String.class);
+            }
+
+            return request.body(body).retrieve().body(String.class);
+        } catch (Exception ex) {
+            throw new IllegalStateException("Direct VNPT call failed for " + method + " " + vnptPath + ": " + ex.getMessage(), ex);
+        }
+    }
+
+    private String gatewayMultipartCall(String token, CreateDocumentDto create) {
+        final String uri = "/api/documents/create";
+
+        MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
+
+        Map<String, Object> metadataMap = new HashMap<>();
+        metadataMap.put("path", uri);
+        metadataMap.put("method", "POST");
+        metadataMap.put("headers", Map.of("Authorization", "Bearer " + token));
+        assert create.no() != null;
+        assert create.subject() != null;
+        metadataMap.put("formFields", Map.of(
+                "No", create.no(),
+                "Subject", create.subject(),
+                "Description", create.description() == null ? "" : create.description(),
+                "TypeId", String.valueOf(create.typeId()),
+                "DepartmentId", String.valueOf(create.departmentId())
+        ));
+
+        String metadataJson;
+        try {
+            metadataJson = mapper.writeValueAsString(metadataMap);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Cannot serialize multipart metadata: " + e.getMessage(), e);
+        }
+
+        parts.add("metadata", metadataJson);
+        parts.add("file", buildPdfPart(create).getBody());
+
+        return vnptRestClient.post()
+                .uri("/internal/vnpt/forward-multipart")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .header("X-Internal-Token", props.getGatewayToken())
+                .body(parts)
+                .exchange((req, res) -> {
+                    byte[] bytes = res.getBody().readAllBytes();
+                    String responseBody = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
+                    log.info("[VNPT] createDocument via gateway status={} body={}", res.getStatusCode(), responseBody);
+                    if (res.getStatusCode().isError()) {
+                        throw new IllegalStateException("HTTP " + res.getStatusCode() + "\n" + responseBody);
+                    }
+                    return responseBody;
+                });
+    }
+
+    private String directMultipartCall(String token, CreateDocumentDto create) {
+        final String uri = "/api/documents/create";
+
+        MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
+        parts.add("No", create.no());
+        parts.add("Subject", create.subject());
+        parts.add("Description", create.description() == null ? "" : create.description());
+        parts.add("TypeId", String.valueOf(create.typeId()));
+        parts.add("DepartmentId", String.valueOf(create.departmentId()));
+        parts.add("file", buildPdfPart(create));
+
+        return directVnptRestClient.post()
+                .uri(uri)
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .body(parts)
+                .retrieve()
+                .body(String.class);
+    }
+
+    private byte[] gatewayBinaryCall(String downloadUrl) {
+        return vnptRestClient.post()
+                .uri("/internal/vnpt/forward-binary")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("X-Internal-Token", props.getGatewayToken())
+                .body(Map.of(
+                        "path", downloadUrl,
+                        "method", "GET",
+                        "headers", Map.of()
+                ))
+                .exchange((req, res) -> {
+                    if (res.getStatusCode().isError()) {
+                        throw new IllegalStateException("Gateway binary download failed: HTTP " + res.getStatusCode());
+                    }
+                    return res.getBody().readAllBytes();
+                });
+    }
+
+    private byte[] directBinaryCall(String downloadUrl) {
+        return directVnptRestClient.get()
+                .uri(downloadUrl)
+                .retrieve()
+                .body(byte[].class);
+    }
+
+    private boolean shouldFallbackToDirect(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof RestClientResponseException responseException) {
+                int status = responseException.getStatusCode().value();
+                if (status == 502 || status == 503 || status == 504) {
+                    return true;
+                }
+            }
+
+            String message = current.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase();
+                if (lower.contains("502")
+                        || lower.contains("503")
+                        || lower.contains("504")
+                        || lower.contains("bad gateway")
+                        || lower.contains("gateway timeout")
+                        || lower.contains("service unavailable")) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private String gatewayCallWithFallback(String vnptPath, HttpMethod method, Object body, Map<String, String> headers) {
+        try {
+            return gatewayCall(vnptPath, method, body, headers);
+        } catch (IllegalStateException ex) {
+            if (!shouldFallbackToDirect(ex)) {
+                throw ex;
+            }
+            log.warn("[VNPT] gateway failed for {} {}, fallback direct baseUrl={}", method, vnptPath, props.getBaseUrl());
+            return directCall(vnptPath, method, body, headers);
+        }
+    }
+
+    private String multipartCallWithFallback(String token, CreateDocumentDto create) {
+        try {
+            return gatewayMultipartCall(token, create);
+        } catch (IllegalStateException ex) {
+            if (!shouldFallbackToDirect(ex)) {
+                throw ex;
+            }
+            log.warn("[VNPT] gateway multipart failed for createDocument, fallback direct baseUrl={}", props.getBaseUrl());
+            return directMultipartCall(token, create);
+        }
+    }
+
+    private byte[] binaryCallWithFallback(String downloadUrl) {
+        try {
+            return gatewayBinaryCall(downloadUrl);
+        } catch (IllegalStateException ex) {
+            if (!shouldFallbackToDirect(ex)) {
+                throw ex;
+            }
+            log.warn("[VNPT] gateway binary download failed, fallback direct url={}", downloadUrl);
+            return directBinaryCall(downloadUrl);
+        }
+    }
+
     @Override
     public VnptResult<VnptDocumentDto> createDocument(String token, CreateDocumentDto create) {
         final String uri = "/api/documents/create";
 
         return safeCall(HttpMethod.POST, uri, () -> {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-            headers.set("X-Internal-Token", props.getGatewayToken());
-
-            MultiValueMap<String, Object> parts = new LinkedMultiValueMap<>();
-
-            Map<String, Object> metadataMap = new HashMap<>();
-            metadataMap.put("path", uri);
-            metadataMap.put("method", "POST");
-            metadataMap.put("headers", Map.of("Authorization", "Bearer " + token));
-            assert create.no() != null;
-            assert create.subject() != null;
-            metadataMap.put("formFields", Map.of(
-                    "No", create.no(),
-                    "Subject", create.subject(),
-                    "Description", create.description() == null ? "" : create.description(),
-                    "TypeId", String.valueOf(create.typeId()),
-                    "DepartmentId", String.valueOf(create.departmentId())
-            ));
-
-            String metadataJson;
-            try {
-                metadataJson = mapper.writeValueAsString(metadataMap);
-            } catch (JsonProcessingException e) {
-                return VnptResult.error("Cannot serialize multipart metadata: " + e.getMessage());
-            }
-
-            parts.add("metadata", metadataJson);
-
-            HttpEntity<Resource> filePart = buildPdfPart(create);
-            parts.add("file", filePart.getBody());
-
-            String response = vnptRestClient.post()
-                    .uri("/internal/vnpt/forward-multipart")
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .header("X-Internal-Token", props.getGatewayToken())
-                    .body(parts)
-                    .exchange((req, res) -> {
-                        byte[] bytes = res.getBody().readAllBytes();
-                        String body = new String(bytes, java.nio.charset.StandardCharsets.UTF_8);
-                        log.info("[VNPT] createDocument status={} body={}", res.getStatusCode(), body);
-                        if (res.getStatusCode().isError()) {
-                            throw new RuntimeException("HTTP " + res.getStatusCode() + "\n" + body);
-                        }
-                        return body;
-                    });
+            String response = multipartCallWithFallback(token, create);
 
             log.info("[VNPT] createDocument response raw={}", response);
 
@@ -193,11 +334,26 @@ public class VnptEContractClientImpl implements VnptEContractClient {
     @Override
     @Cacheable(value = "vnptToken")
     public String getToken() {
-        String userName = requireString(props.getUserName(), "Missing econtract.username");
-        String password = requireString(props.getPassword(), "Missing econtract.password");
+        String userName = resolveCredential(
+                props.getUserName(),
+                "econtract.username",
+                "econtract.username",
+                "vnpt.username",
+                "ECONTRACT_USERNAME",
+                "VNPT_USERNAME"
+        );
+        String password = resolveCredential(
+                props.getPassword(),
+                "econtract.password",
+                "econtract.password",
+                "vnpt.password",
+                "ECONTRACT_PASSWORD",
+                "VNPT_PASSWORD",
+                "E_CONTRACT_PASSWORD"
+        );
         final String uri = "/api/v2/auth/password-login";
 
-        String raw = gatewayCall(
+        String raw = gatewayCallWithFallback(
                 uri,
                 HttpMethod.POST,
                 new LoginVnptDto(userName, password),
@@ -223,7 +379,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
                 return VnptResult.error("Missing users");
             }
 
-            String raw = gatewayCall(
+            String raw = gatewayCallWithFallback(
                     uri,
                     HttpMethod.POST,
                     List.of(users),
@@ -251,7 +407,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
     public String getAccessInfoByProcessCode(String processCode) {
         final String uri = "/api/auth/process-code-login";
 
-        return gatewayCall(
+        return gatewayCallWithFallback(
                 uri,
                 HttpMethod.POST,
                 new ProcessCodeLoginRequest(processCode),
@@ -264,7 +420,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         final String uri = "/api/documents/update-process";
 
         return safeCall(HttpMethod.POST, uri, () -> {
-            String raw = gatewayCall(
+            String raw = gatewayCallWithFallback(
                     uri,
                     HttpMethod.POST,
                     update,
@@ -292,7 +448,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         final String uri = "/api/documents/send-process/" + documentId;
 
         return safeCall(HttpMethod.POST, uri, () -> {
-            String raw = gatewayCall(
+            String raw = gatewayCallWithFallback(
                     uri,
                     HttpMethod.POST,
                     null,
@@ -318,7 +474,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         final String uri = "/api/documents/process";
 
         return safeCall(HttpMethod.POST, uri, () -> {
-            String raw = gatewayCall(
+            String raw = gatewayCallWithFallback(
                     uri,
                     HttpMethod.POST,
                     process,
@@ -341,7 +497,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         final String uri = "/api/documents/" + documentId;
 
         return safeCall(HttpMethod.GET, uri, () -> {
-            String raw = gatewayCall(
+            String raw = gatewayCallWithFallback(
                     uri,
                     HttpMethod.GET,
                     null,
@@ -377,22 +533,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         try {
             log.info("[VNPT] Downloading signed PDF downloadUrl={}", downloadUrl);
 
-            byte[] pdfBytes = vnptRestClient.post()
-                    .uri("/internal/vnpt/forward-binary")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .header("X-Internal-Token", props.getGatewayToken())
-                    .body(Map.of(
-                            "path", downloadUrl,
-                            "method", "GET",
-                            "headers", Map.of()
-                    ))
-                    .exchange((req, res) -> {
-                        if (res.getStatusCode().isError()) {
-                            throw new IllegalStateException("Gateway binary download failed: HTTP "
-                                    + res.getStatusCode());
-                        }
-                        return res.getBody().readAllBytes();
-                    });
+            byte[] pdfBytes = binaryCallWithFallback(downloadUrl);
 
             if (pdfBytes == null || pdfBytes.length == 0)
                 throw new IllegalStateException("Downloaded PDF is empty");
@@ -438,11 +579,53 @@ public class VnptEContractClientImpl implements VnptEContractClient {
         return (node != null && node.isTextual()) ? node.asText() : null;
     }
 
-    private static String requireString(String string, String msg) {
-        if (string == null || string.isBlank()) {
-            throw new IllegalArgumentException(msg);
+    private String resolveCredential(String propertyValue, String propertyName, String... envNames) {
+        String fromProperty = toTrimmedOrNull(propertyValue);
+        if (fromProperty != null) {
+            return fromProperty;
         }
-        return string;
+
+        for (String envName : envNames) {
+            String[] candidates = {
+                    envName,
+                    envName.toUpperCase(),
+                    envName.toLowerCase(),
+                    envName.replace("-", "_"),
+                    envName.replace("_", "-"),
+                    envName.replace("_", "").toUpperCase(),
+                    envName.replace("-", "").toUpperCase(),
+                    envName.replace("_", "").toLowerCase(),
+                    envName.replace("-", "").toLowerCase()
+            };
+
+            for (String candidateName : candidates) {
+                String fromPropertySource = toTrimmedOrNull(environment.getProperty(candidateName));
+                if (fromPropertySource != null) {
+                    return fromPropertySource;
+                }
+
+                String candidate = toTrimmedOrNull(System.getProperty(candidateName));
+                if (candidate != null) {
+                    return candidate;
+                }
+
+                candidate = toTrimmedOrNull(System.getenv(candidateName));
+                if (candidate != null) {
+                    return candidate;
+                }
+            }
+        }
+
+        throw new IllegalArgumentException("Missing " + propertyName
+                + ". Set one of env/system props: " + String.join(", ", envNames));
+    }
+
+    private static String toTrimmedOrNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isBlank() ? null : trimmed;
     }
 
     private <T> VnptResult<T> parseResult(String raw, Class<T> dataClass) {
