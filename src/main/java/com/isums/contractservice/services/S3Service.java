@@ -64,6 +64,24 @@ public class S3Service {
         }
     }
 
+    public String uploadPassportImage(MultipartFile file, UUID contractId) {
+        try {
+            String ext = extension(file.getOriginalFilename());
+            String key = "passport/" + contractId + "/photo-page." + ext;
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(bucket).key(key)
+                            .contentType(file.getContentType())
+                            .contentLength(file.getSize())
+                            .build(),
+                    RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+            log.info("[S3] Passport uploaded key={}", key);
+            return key;
+        } catch (IOException e) {
+            throw new RuntimeException("Upload passport thất bại: " + e.getMessage(), e);
+        }
+    }
+
     public String uploadContractPdf(byte[] pdfBytes, UUID contractId) {
         String key = "contracts/" + contractId + "/snapshot_" + System.currentTimeMillis() + ".pdf";
         s3Client.putObject(
@@ -164,6 +182,61 @@ public class S3Service {
         } catch (Exception e) {
             log.error("[S3] appendCccdPage failed", e);
             throw new IllegalStateException("Append CCCD page thất bại: " + e.getMessage(), e);
+        }
+    }
+
+    public byte[] appendPassportPage(byte[] contractPdf, byte[] passportImageBytes) {
+        try (PDDocument doc = Loader.loadPDF(contractPdf);
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+
+            float pageW = page.getMediaBox().getWidth();
+            float pageH = page.getMediaBox().getHeight();
+            float margin = 40f;
+            float headerReserve = 80f;
+            float imgMaxW = pageW - margin * 2;
+            float imgMaxH = pageH - margin * 2 - headerReserve;
+
+            PDImageXObject passportImg = PDImageXObject.createFromByteArray(doc, passportImageBytes, "passport");
+            float scale = Math.min(imgMaxW / passportImg.getWidth(), imgMaxH / passportImg.getHeight());
+            float imgW = passportImg.getWidth() * scale;
+            float imgH = passportImg.getHeight() * scale;
+            float imgX = (pageW - imgW) / 2;
+            float imgY = pageH - margin - headerReserve - imgH;
+
+            PDType0Font fontBold   = loadFont(doc, "/fonts/SVN-Times New Roman 2 bold.ttf");
+            PDType0Font fontNormal = loadFont(doc, "/fonts/SVN-Times New Roman 2.ttf");
+
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.beginText();
+                cs.setFont(fontBold, 13);
+                cs.newLineAtOffset(margin, pageH - margin - 20);
+                cs.showText("PHỤ LỤC: HỘ CHIẾU CỦA NGƯỜI THUÊ");
+                cs.endText();
+
+                cs.beginText();
+                cs.setFont(fontNormal, 10);
+                cs.newLineAtOffset(margin, pageH - margin - 40);
+                cs.showText("(Passport of the tenant / テナントのパスポート)");
+                cs.endText();
+
+                cs.drawImage(passportImg, imgX, imgY, imgW, imgH);
+
+                cs.beginText();
+                cs.setFont(fontNormal, 10);
+                cs.newLineAtOffset(margin, imgY - 20);
+                cs.showText("Trang thông tin hộ chiếu (photo page)");
+                cs.endText();
+            }
+
+            doc.save(out);
+            return out.toByteArray();
+
+        } catch (Exception e) {
+            log.error("[S3] appendPassportPage failed", e);
+            throw new IllegalStateException("Append passport page thất bại: " + e.getMessage(), e);
         }
     }
 

@@ -1,6 +1,7 @@
 package com.isums.contractservice.infrastructures.clients;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.isums.contractservice.domains.dtos.PassportIdentityDto;
 import com.isums.contractservice.domains.dtos.TenantIdentityDto;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,30 +27,45 @@ public class OcrServiceClient {
 
     public TenantIdentityDto extractCccd(MultipartFile image) {
         try {
-            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            ByteArrayResource resource = new ByteArrayResource(image.getBytes()) {
-                @Override
-                public String getFilename() {
-                    return image.getOriginalFilename();
-                }
-            };
-            body.add("image", resource);
-
-            String response = restClient.post()
-                    .uri(ocrServiceUrl + "/ocr/cccd")
-                    .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(body)
-                    .retrieve()
-                    .body(String.class);
-
+            String response = postImage("/ocr/cccd", image);
             TenantIdentityDto result = objectMapper.readValue(response, TenantIdentityDto.class);
             log.info("[OCR] Extracted identity: {}, name: {}",
                     result.getIdentityNumber(), result.getFullName());
             return result;
-
         } catch (Exception e) {
             log.error("[OCR] Failed to extract CCCD: {}", e.getMessage());
             throw new RuntimeException("OCR service unavailable: " + e.getMessage(), e);
         }
+    }
+
+    public PassportIdentityDto extractPassport(MultipartFile image) {
+        try {
+            String response = postImage("/ocr/passport", image);
+            PassportIdentityDto result = objectMapper.readValue(response, PassportIdentityDto.class);
+            log.info("[OCR] Extracted passport: {}, name: {}, nationality: {}",
+                    result.getPassportNumber(), result.getFullName(), result.getNationality());
+            return result;
+        } catch (Exception e) {
+            log.error("[OCR] Failed to extract passport: {}", e.getMessage());
+            throw new RuntimeException("OCR service unavailable: " + e.getMessage(), e);
+        }
+    }
+
+    private String postImage(String path, MultipartFile image) throws java.io.IOException {
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        ByteArrayResource resource = new ByteArrayResource(image.getBytes()) {
+            @Override
+            public String getFilename() {
+                return image.getOriginalFilename();
+            }
+        };
+        body.add("image", resource);
+
+        return restClient.post()
+                .uri(ocrServiceUrl + path)
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(body)
+                .retrieve()
+                .body(String.class);
     }
 }

@@ -69,11 +69,14 @@ class EContractServiceImplTest {
     @Mock private EContractMapper mapper;
     @Mock private S3Service s3;
     @Mock private ObjectMapper json;
-    @Mock private KeycloakAdminServiceImpl keycloakAdmin;
     @Mock private ContractTokenService contractTokenService;
     @Mock private RenewalRequestRepository renewalRequestRepo;
     @Mock private RenewalServiceImpl renewalService;
     @Mock private CachedPageService cachedPageService;
+    @Mock private com.isums.contractservice.infrastructures.repositories.ContractCoTenantRepository coTenantRepo;
+    @Mock private ContractHtmlBuilder htmlBuilder;
+    @Mock private OutboxPublisher outboxPublisher;
+    @Mock private org.springframework.security.core.Authentication landlordAuth;
 
     @InjectMocks private EContractServiceImpl service;
 
@@ -93,23 +96,73 @@ class EContractServiceImplTest {
         tenantId = UUID.randomUUID();
         houseId = UUID.randomUUID();
         actorId = UUID.randomUUID();
+
+        // LANDLORD scope bypasses region/ownership filtering — the default
+        // for this test class which pre-dates role-aware authz.
+        lenient().when(landlordAuth.getName()).thenReturn(actorId.toString());
+        org.springframework.security.core.GrantedAuthority landlordRole =
+                new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_LANDLORD");
+        lenient().doReturn(java.util.List.of(landlordRole)).when(landlordAuth).getAuthorities();
     }
 
     private EContract contract(EContractStatus status) {
         return EContract.builder()
                 .id(contractId).userId(tenantId).houseId(houseId)
                 .createdBy(actorId).tenantName("Alice")
-                .tenantIdentityNumber("0123456789")
+                .cccdNumber("0123456789")
                 .hasPowerCutClause(false)
                 .status(status)
                 .startAt(Instant.now()).endAt(Instant.now().plusSeconds(86400))
                 .build();
     }
 
+    /**
+     * UpdateEContractRequest has 36 nullable fields after V6 cleanup
+     * (usableAreaM2 dropped — pulled from House gRPC). Tests here only
+     * care about html; helper fills the rest with null.
+     */
+    private UpdateEContractRequest updateWithHtml(String html) {
+        return new UpdateEContractRequest(
+                html, null,                                           // 1-2: html, name
+                null, null, null, null, null, null, null, null,       // 3-10: money + dates
+                null, null, null, null, null, null, null,             // 11-17: tenant personal + detailedAddress
+                null, null, null, null, null, null, null,             // 18-24: passport + visa + nationality
+                null, null, null,                                     // 25-27: land cert (3: number/date/issuer)
+                null, null, null, null, null, null,                   // 28-33: rules
+                null, null, null                                      // 34-36: meter, lang, powerCut
+        );
+    }
+
     private EContractDto dto() {
-        return new EContractDto(contractId, null, null, tenantId, null,
-                "<html/>", "Contract", null, houseId, Instant.now(), Instant.now().plusSeconds(86400),
-                EContractStatus.DRAFT, null, actorId, Instant.now());
+        // EContractDto has 54 fields after V6 cleanup (removed tenantId + usableAreaM2).
+        return new EContractDto(
+                contractId, null, null, tenantId,
+                "<html/>", "Contract", null, houseId, null,
+                Instant.now(), Instant.now().plusSeconds(86400),
+                EContractStatus.DRAFT, null, actorId, Instant.now(), null,
+                // tenantType, contractLanguage, tenantName, cccdNumber
+                null, null, null, null,
+                // dateOfBirth, gender, nationality, occupation, permanentAddress, detailedAddress
+                null, null, null, null, null, null,
+                // passportNumber, passportIssueDate, passportIssuePlace, passportExpiryDate
+                null, null, null, null,
+                // visaType, visaExpiryDate
+                null, null,
+                // cccdVerifiedAt, passportVerifiedAt
+                null, null,
+                // landCertNumber, landCertIssueDate, landCertIssuer (no usableAreaM2)
+                null, null, null,
+                // rentAmount, depositAmount, payDate, lateDays, latePenaltyPercent
+                null, null, null, null, null,
+                // depositRefundDays, handoverDate, renewNoticeDays
+                null, null, null,
+                // petPolicy, smokingPolicy, subleasePolicy, visitorPolicy
+                null, null, null, null,
+                // tempResidenceRegisterBy, taxResponsibility, meterReadingsStart
+                null, null, null,
+                // hasPowerCutClause, terminatedAt, terminatedReason, terminatedBy
+                null, null, null, null
+        );
     }
 
     @Nested
@@ -123,7 +176,7 @@ class EContractServiceImplTest {
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
             when(mapper.contractToDto(c)).thenReturn(dto());
 
-            EContractDto result = service.getById(contractId);
+            EContractDto result = service.getById(contractId, landlordAuth);
             assertThat(result.pdfUrl()).isNull();
         }
 
@@ -134,7 +187,7 @@ class EContractServiceImplTest {
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
             when(mapper.contractToDto(c)).thenReturn(dto());
 
-            service.getById(contractId);
+            service.getById(contractId, landlordAuth);
 
             verify(s3, never()).presignedUrl(anyString(), anyInt());
         }
@@ -148,7 +201,7 @@ class EContractServiceImplTest {
             when(mapper.contractToDto(c)).thenReturn(dto());
             when(s3.presignedUrl("snapshot/key", 60)).thenReturn("https://s3/pre");
 
-            EContractDto result = service.getById(contractId);
+            EContractDto result = service.getById(contractId, landlordAuth);
             assertThat(result.pdfUrl()).isEqualTo("https://s3/pre");
         }
 
@@ -157,7 +210,7 @@ class EContractServiceImplTest {
         void notFound() {
             when(contractRepo.findById(contractId)).thenReturn(Optional.empty());
 
-            assertThatThrownBy(() -> service.getById(contractId))
+            assertThatThrownBy(() -> service.getById(contractId, landlordAuth))
                     .isInstanceOf(NotFoundException.class);
         }
 
@@ -168,7 +221,7 @@ class EContractServiceImplTest {
             c.setSnapshotKey(null);
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
 
-            assertThatThrownBy(() -> service.getById(contractId))
+            assertThatThrownBy(() -> service.getById(contractId, landlordAuth))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("chưa được tạo PDF");
         }
@@ -186,7 +239,7 @@ class EContractServiceImplTest {
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
             when(mapper.contractToDto(any())).thenReturn(dto());
 
-            service.updateContract(contractId, new UpdateEContractRequest("<new/>"));
+            service.updateContract(contractId, updateWithHtml("<new/>"));
 
             assertThat(c.getStatus()).isEqualTo(EContractStatus.CORRECTING);
             assertThat(c.getSnapshotKey()).isNull();
@@ -203,7 +256,7 @@ class EContractServiceImplTest {
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
             when(mapper.contractToDto(any())).thenReturn(dto());
 
-            service.updateContract(contractId, new UpdateEContractRequest("<new/>"));
+            service.updateContract(contractId, updateWithHtml("<new/>"));
 
             assertThat(c.getStatus()).isEqualTo(EContractStatus.DRAFT);
             verify(contractRepo).save(c);
@@ -217,7 +270,7 @@ class EContractServiceImplTest {
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
             when(mapper.contractToDto(any())).thenReturn(dto());
 
-            service.updateContract(contractId, new UpdateEContractRequest("<new/>"));
+            service.updateContract(contractId, updateWithHtml("<new/>"));
 
             assertThat(c.getStatus()).isEqualTo(EContractStatus.CORRECTING);
             verify(contractRepo).save(c);
@@ -230,7 +283,7 @@ class EContractServiceImplTest {
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
 
             assertThatThrownBy(() -> service.updateContract(contractId,
-                    new UpdateEContractRequest("<x/>")))
+                    updateWithHtml("<x/>")))
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("IN_PROGRESS");
         }
@@ -241,7 +294,7 @@ class EContractServiceImplTest {
     class DeleteContract {
 
         @Test
-        @DisplayName("deletes from repo and S3 when DRAFT")
+        @DisplayName("soft-deletes and purges S3 when DRAFT")
         void deletesDraft() {
             EContract c = contract(EContractStatus.DRAFT);
             c.setSnapshotKey("some/key");
@@ -249,8 +302,15 @@ class EContractServiceImplTest {
 
             service.deleteContract(contractId, actorId);
 
+            // PII purged from S3 + entity fields cleared
             verify(s3).deleteIfExists("some/key");
-            verify(contractRepo).delete(c);
+            assertThat(c.getSnapshotKey()).isNull();
+            // Row retained for audit; status flipped to DELETED + audit fields populated
+            assertThat(c.getDeletedAt()).isNotNull();
+            assertThat(c.getDeletedBy()).isEqualTo(actorId);
+            assertThat(c.getStatus()).isEqualTo(EContractStatus.DELETED);
+            verify(contractRepo).save(c);
+            verify(contractRepo, never()).delete(any(EContract.class));
         }
 
         @Test
@@ -263,6 +323,7 @@ class EContractServiceImplTest {
                     .isInstanceOf(IllegalStateException.class)
                     .hasMessageContaining("DRAFT");
             verify(contractRepo, never()).delete(any(EContract.class));
+            verify(contractRepo, never()).save(any(EContract.class));
         }
     }
 
@@ -557,18 +618,20 @@ class EContractServiceImplTest {
     class SendReadyForLandlordSignatureEvent {
 
         @Test
-        @DisplayName("publishes ready notification event for landlord or manager")
+        @DisplayName("enqueues ready notification via outbox for landlord or manager")
         void publishesReadyEvent() {
             EContract c = contract(EContractStatus.READY);
             c.setName("Lease April");
             c.setDocumentId("doc-123");
-            doReturn(CompletableFuture.completedFuture(null))
-                    .when(kafka).send(eq("contract.ready-for-landlord-signature"), eq(contractId.toString()), any());
 
             ReflectionTestUtils.invokeMethod(service, "sendReadyForLandlordSignatureEvent", c);
 
             ArgumentCaptor<Object> cap = ArgumentCaptor.forClass(Object.class);
-            verify(kafka).send(eq("contract.ready-for-landlord-signature"), eq(contractId.toString()), cap.capture());
+            verify(outboxPublisher).enqueue(
+                    eq("contract.ready-for-landlord-signature"),
+                    eq(contractId.toString()),
+                    cap.capture(),
+                    anyString());
 
             ContractReadyForLandlordSignatureEvent event = (ContractReadyForLandlordSignatureEvent) cap.getValue();
             assertThat(event.contractId()).isEqualTo(contractId);
@@ -588,7 +651,8 @@ class EContractServiceImplTest {
 
             ReflectionTestUtils.invokeMethod(service, "sendReadyForLandlordSignatureEvent", c);
 
-            verify(kafka, never()).send(eq("contract.ready-for-landlord-signature"), anyString(), any());
+            verify(outboxPublisher, never())
+                    .enqueue(eq("contract.ready-for-landlord-signature"), anyString(), any(), anyString());
         }
     }
 
@@ -597,16 +661,18 @@ class EContractServiceImplTest {
     class TriggerReadyForLandlordSignatureNotification {
 
         @Test
-        @DisplayName("replays ready notification for READY contract")
+        @DisplayName("replays ready notification via outbox for READY contract")
         void replaysForReadyContract() {
             EContract c = contract(EContractStatus.READY);
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
-            doReturn(CompletableFuture.completedFuture(null))
-                    .when(kafka).send(eq("contract.ready-for-landlord-signature"), eq(contractId.toString()), any());
 
             service.triggerReadyForLandlordSignatureNotification(contractId);
 
-            verify(kafka).send(eq("contract.ready-for-landlord-signature"), eq(contractId.toString()), any());
+            verify(outboxPublisher).enqueue(
+                    eq("contract.ready-for-landlord-signature"),
+                    eq(contractId.toString()),
+                    any(),
+                    anyString());
         }
 
         @Test

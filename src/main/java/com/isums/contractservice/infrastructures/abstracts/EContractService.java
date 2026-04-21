@@ -3,6 +3,7 @@ package com.isums.contractservice.infrastructures.abstracts;
 import com.isums.contractservice.domains.dtos.*;
 import common.paginations.dtos.PageRequest;
 import common.paginations.dtos.PageResponse;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
@@ -12,9 +13,9 @@ public interface EContractService {
 
     EContractDto createDraft(UUID actorId, String jwtToken, CreateEContractRequest req);
 
-    EContractDto getById(UUID id);
+    EContractDto getById(UUID id, Authentication auth);
 
-    PageResponse<EContractDto> getAll(PageRequest request);
+    PageResponse<EContractDto> getAll(PageRequest request, Authentication auth);
 
     EContractDto updateContract(UUID id, UpdateEContractRequest req);
 
@@ -27,6 +28,10 @@ public interface EContractService {
     String getPdfPresignedUrl(UUID contractId, String contractToken);
 
     VnptDocumentDto tenantConfirmWithCccd(UUID contractId, MultipartFile frontImage, MultipartFile backImage, String contractToken);
+
+    VnptDocumentDto tenantConfirmWithPassport(UUID contractId, MultipartFile passportImage, String contractToken);
+
+    boolean hasPassport(UUID contractId);
 
     void triggerReadyForLandlordSignatureNotification(UUID contractId);
 

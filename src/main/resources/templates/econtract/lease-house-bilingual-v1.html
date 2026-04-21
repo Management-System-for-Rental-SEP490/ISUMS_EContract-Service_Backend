@@ -1,0 +1,442 @@
+<html lang="vi">
+<head>
+    <meta charset="utf-8"/>
+    <title>HỢP ĐỒNG THUÊ NHÀ Ở SONG NGỮ</title>
+    <style>
+        body { font-family: "Times New Roman", serif; line-height: 1.4; font-size: 12.5px; }
+        h1,h2 { text-align: center; margin: 4px 0; }
+        .center { text-align: center; }
+        .right  { text-align: right; }
+        .small  { font-size: 11px; font-style: italic; }
+        .legal-note { font-size: 10.5px; font-style: italic; color: #333; text-align: center; }
+        .clause-title {
+            font-weight: bold; margin-top: 10px; text-transform: uppercase;
+            border-top: 1px solid #000; padding-top: 4px;
+        }
+        table.layout { width: 100%; border-collapse: collapse; margin-top: 2px; table-layout: fixed; }
+        table.layout td { width: 50%; vertical-align: top; padding: 4px 8px; border: none; }
+        table.layout td + td { border-left: 1px solid #bbb; }
+        table.party { width: 100%; border-collapse: collapse; margin-top: 4px; }
+        table.party td { border: none; padding: 2px 0; vertical-align: top; }
+        table.assets { width: 100%; border-collapse: collapse; margin-top: 6px; }
+        table.assets th, table.assets td { border: 1px solid #000; padding: 4px; }
+    </style>
+</head>
+<body>
+
+<table class="layout">
+    <tbody>
+    <tr>
+        <td>
+            <h1>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</h1>
+            <div class="center"><b>Độc lập – Tự do – Hạnh phúc</b></div>
+            <div class="right">…, ngày {{EFFECTIVE_DATE.vi}}</div>
+            <h2>HỢP ĐỒNG THUÊ NHÀ Ở</h2>
+            <div class="center small">Số: {{DOCUMENT_NO.vi}}</div>
+        </td>
+        <td>
+            <h1>{{HEADING_COUNTRY.xx}}</h1>
+            <div class="center"><b>{{HEADING_MOTTO.xx}}</b></div>
+            <div class="right">{{EFFECTIVE_DATE.xx}}</div>
+            <h2>{{HEADING_TITLE.xx}}</h2>
+            <div class="center small">{{HEADING_NO.xx}} {{DOCUMENT_NO.xx}}</div>
+        </td>
+    </tr>
+    </tbody>
+</table>
+
+<div class="legal-note">
+    {{PREVAILING_LANGUAGE_CLAUSE.vi}} &nbsp;|&nbsp; {{PREVAILING_LANGUAGE_CLAUSE.xx}}
+</div>
+
+<!-- CĂN CỨ PHÁP LÝ -->
+<table class="layout">
+    <tbody>
+    <tr>
+        <td>
+            <div class="clause-title">Căn cứ pháp lý</div>
+            <ul>
+                <li>Bộ luật Dân sự 2015 (Điều 472–482; Điều 408).</li>
+                <li>Luật Nhà ở 2023 (Điều 163).</li>
+                <li>Luật Kinh doanh bất động sản 2023.</li>
+                <li>Luật Cư trú 2020.</li>
+                <li>Thỏa thuận giữa các bên.</li>
+            </ul>
+        </td>
+        <td>
+            <div class="clause-title">{{LEGAL_BASIS.xx}}</div>
+            <ul>
+                <li>{{LAW_CIVIL.xx}}</li>
+                <li>{{LAW_HOUSING.xx}}</li>
+                <li>{{LAW_REALESTATE.xx}}</li>
+                <li>{{LAW_RESIDENCE.xx}}</li>
+                <li>{{LAW_PARTY_AGREEMENT.xx}}</li>
+            </ul>
+        </td>
+    </tr>
+    </tbody>
+</table>
+
+<!-- BÊN A -->
+<table class="layout">
+    <tbody>
+    <tr>
+        <td>
+            <div class="clause-title">Bên cho thuê (Bên A)</div>
+            <table class="party">
+                <tbody>
+                <tr><td>Họ và tên:</td><td><b>{{LANDLORD_NAME}}</b></td></tr>
+                <tr><td>Ngày sinh:</td><td>{{LANDLORD_DOB}}</td></tr>
+                <tr><td>CCCD/CMND:</td><td>{{LANDLORD_ID}}</td></tr>
+                <tr><td>Ngày cấp / Nơi cấp:</td><td>{{LANDLORD_ID_ISSUE}}</td></tr>
+                <tr><td>Địa chỉ thường trú:</td><td>{{LANDLORD_PERMANENT_ADDRESS}}</td></tr>
+                <tr><td>Điện thoại / Email:</td><td>{{LANDLORD_PHONE}} / {{LANDLORD_EMAIL}}</td></tr>
+                <tr><td>MST:</td><td>{{LANDLORD_TAX_CODE}}</td></tr>
+                <tr><td>Tài khoản:</td><td>{{LANDLORD_BANK}} — {{LANDLORD_BANK_NAME}}</td></tr>
+                </tbody>
+            </table>
+        </td>
+        <td>
+            <div class="clause-title">{{LABEL_LANDLORD.xx}}</div>
+            <table class="party">
+                <tbody>
+                <tr><td>{{LABEL_FULL_NAME.xx}}</td><td><b>{{LANDLORD_NAME}}</b></td></tr>
+                <tr><td>{{LABEL_DOB.xx}}</td><td>{{LANDLORD_DOB}}</td></tr>
+                <tr><td>{{LABEL_ID.xx}}</td><td>{{LANDLORD_ID}}</td></tr>
+                <tr><td>{{LABEL_ID_ISSUE.xx}}</td><td>{{LANDLORD_ID_ISSUE}}</td></tr>
+                <tr><td>{{LABEL_PERM_ADDRESS.xx}}</td><td>{{LANDLORD_PERMANENT_ADDRESS}}</td></tr>
+                <tr><td>{{LABEL_PHONE_EMAIL.xx}}</td><td>{{LANDLORD_PHONE}} / {{LANDLORD_EMAIL}}</td></tr>
+                <tr><td>{{LABEL_TAX_CODE.xx}}</td><td>{{LANDLORD_TAX_CODE}}</td></tr>
+                <tr><td>{{LABEL_BANK.xx}}</td><td>{{LANDLORD_BANK}} — {{LANDLORD_BANK_NAME}}</td></tr>
+                </tbody>
+            </table>
+        </td>
+    </tr>
+    </tbody>
+</table>
+
+<!-- BÊN B -->
+<table class="layout">
+    <tbody>
+    <tr>
+        <td>
+            <div class="clause-title">Bên thuê (Bên B)</div>
+            <table class="party">
+                <tbody>
+                <tr><td>Họ và tên:</td><td><b>{{TENANT_NAME}}</b></td></tr>
+                <tr><td>Loại giấy tờ:</td><td>{{TENANT_IDENTITY_KIND.vi}}</td></tr>
+                <tr><td>Số giấy tờ:</td><td>{{TENANT_ID}}</td></tr>
+                <tr><td>Ngày cấp / Nơi cấp:</td><td>{{TENANT_ID_ISSUE}}</td></tr>
+                <tr><td>Ngày sinh / Giới tính:</td><td>{{TENANT_DOB}} / {{TENANT_GENDER.vi}}</td></tr>
+                <tr><td>Quốc tịch:</td><td>{{TENANT_NATIONALITY}}</td></tr>
+                <tr><td>Nghề nghiệp:</td><td>{{TENANT_OCCUPATION.vi}}</td></tr>
+                <tr><td>Địa chỉ thường trú:</td><td>{{TENANT_PERMANENT_ADDRESS.vi}}</td></tr>
+                <tr><td>Điện thoại / Email:</td><td>{{TENANT_PHONE}} / {{TENANT_EMAIL}}</td></tr>
+                <tr><td>Thị thực:</td><td>{{TENANT_VISA}}</td></tr>
+                </tbody>
+            </table>
+        </td>
+        <td>
+            <div class="clause-title">{{LABEL_TENANT.xx}}</div>
+            <table class="party">
+                <tbody>
+                <tr><td>{{LABEL_FULL_NAME.xx}}</td><td><b>{{TENANT_NAME}}</b></td></tr>
+                <tr><td>{{LABEL_IDENTITY_KIND.xx}}</td><td>{{TENANT_IDENTITY_KIND.xx}}</td></tr>
+                <tr><td>{{LABEL_ID.xx}}</td><td>{{TENANT_ID}}</td></tr>
+                <tr><td>{{LABEL_ID_ISSUE.xx}}</td><td>{{TENANT_ID_ISSUE}}</td></tr>
+                <tr><td>{{LABEL_DOB_GENDER.xx}}</td><td>{{TENANT_DOB}} / {{TENANT_GENDER.xx}}</td></tr>
+                <tr><td>{{LABEL_NATIONALITY.xx}}</td><td>{{TENANT_NATIONALITY}}</td></tr>
+                <tr><td>{{LABEL_OCCUPATION.xx}}</td><td>{{TENANT_OCCUPATION.xx}}</td></tr>
+                <tr><td>{{LABEL_PERM_ADDRESS.xx}}</td><td>{{TENANT_PERMANENT_ADDRESS.xx}}</td></tr>
+                <tr><td>{{LABEL_PHONE_EMAIL.xx}}</td><td>{{TENANT_PHONE}} / {{TENANT_EMAIL}}</td></tr>
+                <tr><td>{{LABEL_VISA.xx}}</td><td>{{TENANT_VISA}}</td></tr>
+                </tbody>
+            </table>
+        </td>
+    </tr>
+    </tbody>
+</table>
+
+{{CO_TENANTS_BLOCK}}
+
+<!-- ĐIỀU 1 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 1. Đối tượng hợp đồng</div>
+        <p>Bên A đồng ý cho Bên B thuê toàn bộ Nhà ở tại địa chỉ: <b>{{PROPERTY_ADDRESS}}</b>.</p>
+        <p>Diện tích sử dụng: {{USABLE_AREA_M2}} m²; kết cấu: {{STRUCTURE.vi}};
+            mục đích: <b>Thuê để ở</b>.</p>
+        <p>Chứng nhận quyền SH/SD: {{LAND_CERT_NUMBER}} — cấp ngày {{LAND_CERT_ISSUE_DATE}} bởi {{LAND_CERT_ISSUER.vi}}.</p>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_1_TITLE.xx}}</div>
+        <p>{{ART_1_P1.xx}} <b>{{PROPERTY_ADDRESS}}</b>.</p>
+        <p>{{ART_1_P2_AREA.xx}} {{USABLE_AREA_M2}} m²; {{ART_1_P2_STRUCTURE.xx}} {{STRUCTURE.xx}}.</p>
+        <p>{{ART_1_P3_CERT.xx}} {{LAND_CERT_NUMBER}} — {{LAND_CERT_ISSUED_BY.xx}} {{LAND_CERT_ISSUE_DATE}}, {{LAND_CERT_ISSUER.xx}}.</p>
+    </td>
+    </tr></tbody>
+</table>
+
+<!-- ĐIỀU 2 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 2. Thời hạn thuê</div>
+        <p>Từ ngày <b>{{START_DATE}}</b> đến hết ngày <b>{{END_DATE}}</b>.
+            Gia hạn phải được lập thành văn bản trước {{RENEW_NOTICE_DAYS}} ngày.</p>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_2_TITLE.xx}}</div>
+        <p>{{ART_2_FROM.xx}} <b>{{START_DATE}}</b> {{ART_2_TO.xx}} <b>{{END_DATE}}</b>.
+            {{ART_2_RENEWAL.xx}} {{RENEW_NOTICE_DAYS}} {{ART_2_DAYS.xx}}.</p>
+    </td>
+    </tr></tbody>
+</table>
+
+<!-- ĐIỀU 3 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 3. Giá thuê và thanh toán</div>
+        <p>Giá thuê: <b>{{RENT_AMOUNT}}</b> VNĐ/tháng
+            (<i>{{RENT_TEXT.vi}}</i>). Thuế/phí: {{TAX_FEE_NOTE.vi}}.
+            Trách nhiệm thuế TNCN: {{TAX_RESPONSIBILITY.vi}}.</p>
+        <p>Kỳ: {{PAY_CYCLE.vi}}; ngày {{PAY_DAY}} hằng kỳ; chuyển khoản.
+            Chậm quá {{LATE_DAYS}} ngày: {{LATE_PENALTY}}%/tháng lãi chậm trả.</p>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_3_TITLE.xx}}</div>
+        <p>{{ART_3_RENT.xx}} <b>{{RENT_AMOUNT}}</b> VND/month
+            (<i>{{RENT_TEXT.xx}}</i>). {{ART_3_TAX.xx}} {{TAX_FEE_NOTE.xx}}.
+            {{ART_3_TAX_RESP.xx}} {{TAX_RESPONSIBILITY.xx}}.</p>
+        <p>{{ART_3_CYCLE.xx}} {{PAY_CYCLE.xx}}; {{ART_3_PAY_DAY.xx}} {{PAY_DAY}}.
+            {{ART_3_LATE.xx}} {{LATE_DAYS}} {{ART_3_DAYS.xx}} — {{LATE_PENALTY}}%/month.</p>
+    </td>
+    </tr></tbody>
+</table>
+
+<!-- ĐIỀU 4 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 4. Đặt cọc</div>
+        <p>Đặt cọc <b>{{DEPOSIT_AMOUNT}}</b> VNĐ, nộp ngày {{DEPOSIT_DATE}}.
+            Hoàn cọc trong {{DEPOSIT_REFUND_DAYS}} ngày sau thanh lý.</p>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_4_TITLE.xx}}</div>
+        <p>{{ART_4_AMOUNT.xx}} <b>{{DEPOSIT_AMOUNT}}</b> VND, {{ART_4_PAID_ON.xx}} {{DEPOSIT_DATE}}.
+            {{ART_4_REFUND.xx}} {{DEPOSIT_REFUND_DAYS}} {{ART_4_DAYS.xx}}.</p>
+    </td>
+    </tr></tbody>
+</table>
+
+<!-- ĐIỀU 5 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 5. Bàn giao</div>
+        <p>Bên A bàn giao Nhà thuê vào ngày {{HANDOVER_DATE}}.
+            Chỉ số công tơ đầu kỳ (chỉ để ghi nhận): điện {{METER_ELECTRIC}} kWh;
+            nước {{METER_WATER}} m³. {{METER_NOTE.vi}}</p>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_5_TITLE.xx}}</div>
+        <p>{{ART_5_HANDOVER.xx}} {{HANDOVER_DATE}}.
+            {{ART_5_METER.xx}} {{METER_ELECTRIC}} kWh; {{METER_WATER}} m³ (water). {{METER_NOTE.xx}}</p>
+    </td>
+    </tr></tbody>
+</table>
+
+{{ASSETS_TABLE}}
+
+<!-- ĐIỀU 6 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 6. Dịch vụ điện, nước, internet</div>
+        <p>Hợp đồng thuê nguyên căn. Bên B tự đăng ký và thanh toán trực tiếp điện, nước,
+            internet, phí dịch vụ với đơn vị cung cấp. Bên A không thu các khoản này qua hợp đồng.</p>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_6_TITLE.xx}}</div>
+        <p>{{ART_6_BODY.xx}}</p>
+    </td>
+    </tr></tbody>
+</table>
+
+<!-- ĐIỀU 7 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 7. Nội quy và quyền cư trú</div>
+        <ul>
+            <li>Thú cưng: {{PET_POLICY.vi}}</li>
+            <li>Hút thuốc: {{SMOKING_POLICY.vi}}</li>
+            <li>Cho thuê lại: {{SUBLEASE_POLICY.vi}}</li>
+            <li>Khách qua đêm: {{VISITOR_POLICY.vi}}</li>
+            <li>Đăng ký tạm trú: {{TEMP_RESIDENCE_REGISTER_BY.vi}}</li>
+        </ul>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_7_TITLE.xx}}</div>
+        <ul>
+            <li>{{LABEL_PET.xx}} {{PET_POLICY.xx}}</li>
+            <li>{{LABEL_SMOKING.xx}} {{SMOKING_POLICY.xx}}</li>
+            <li>{{LABEL_SUBLEASE.xx}} {{SUBLEASE_POLICY.xx}}</li>
+            <li>{{LABEL_VISITOR.xx}} {{VISITOR_POLICY.xx}}</li>
+            <li>{{LABEL_TEMP_RES.xx}} {{TEMP_RESIDENCE_REGISTER_BY.xx}}</li>
+        </ul>
+    </td>
+    </tr></tbody>
+</table>
+
+<!-- ĐIỀU 8 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 8. Quyền và nghĩa vụ Bên A</div>
+        <ul>
+            <li>Bàn giao Nhà thuê đúng hạn, đúng hiện trạng.</li>
+            <li>Bảo trì phần kết cấu và hạ tầng thuộc trách nhiệm chủ nhà.</li>
+            <li>Thông báo trước {{LANDLORD_NOTICE_DAYS}} ngày khi kiểm tra/bảo trì.</li>
+            <li>Phát hành chứng từ thu tiền thuê theo yêu cầu hợp lệ.</li>
+        </ul>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_8_TITLE.xx}}</div>
+        <ul>
+            <li>{{ART_8_LI1.xx}}</li>
+            <li>{{ART_8_LI2.xx}}</li>
+            <li>{{ART_8_LI3.xx}} {{LANDLORD_NOTICE_DAYS}} {{ART_8_DAYS.xx}}</li>
+            <li>{{ART_8_LI4.xx}}</li>
+        </ul>
+    </td>
+    </tr></tbody>
+</table>
+
+<!-- ĐIỀU 9 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 9. Quyền và nghĩa vụ Bên B</div>
+        <ul>
+            <li>Sử dụng đúng mục đích, không tự ý thay đổi kết cấu.</li>
+            <li>Giữ gìn tài sản; bồi thường thiệt hại do lỗi của mình.</li>
+            <li>Thanh toán đầy đủ, đúng hạn; tuân thủ PCCC và an ninh trật tự.</li>
+            <li>Tuân thủ pháp luật cư trú và nội quy tại Điều 7.</li>
+        </ul>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_9_TITLE.xx}}</div>
+        <ul>
+            <li>{{ART_9_LI1.xx}}</li>
+            <li>{{ART_9_LI2.xx}}</li>
+            <li>{{ART_9_LI3.xx}}</li>
+            <li>{{ART_9_LI4.xx}}</li>
+        </ul>
+    </td>
+    </tr></tbody>
+</table>
+
+<!-- ĐIỀU 10 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 10. Chấm dứt hợp đồng</div>
+        <ul>
+            <li>Hết thời hạn và không gia hạn.</li>
+            <li>Vi phạm nghĩa vụ cơ bản và không khắc phục trong {{CURE_DAYS}} ngày.</li>
+            <li>Chậm thanh toán quá {{MAX_LATE_DAYS}} ngày liên tiếp.</li>
+            <li>Bất khả kháng theo Điều 11.</li>
+        </ul>
+        <p>Lỗi Bên B: {{EARLY_TERMINATION_PENALTY.vi}}.
+            Lỗi Bên A: {{LANDLORD_BREACH_COMPENSATION.vi}}.</p>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_10_TITLE.xx}}</div>
+        <ul>
+            <li>{{ART_10_LI1.xx}}</li>
+            <li>{{ART_10_LI2.xx}} {{CURE_DAYS}} {{ART_10_DAYS.xx}}</li>
+            <li>{{ART_10_LI3.xx}} {{MAX_LATE_DAYS}} {{ART_10_DAYS.xx}}</li>
+            <li>{{ART_10_LI4.xx}}</li>
+        </ul>
+        <p>{{ART_10_B_FAULT.xx}} {{EARLY_TERMINATION_PENALTY.xx}}.
+            {{ART_10_A_FAULT.xx}} {{LANDLORD_BREACH_COMPENSATION.xx}}.</p>
+    </td>
+    </tr></tbody>
+</table>
+
+<!-- ĐIỀU 11 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 11. Bất khả kháng</div>
+        <p>Bên gặp sự kiện BKK phải thông báo trong {{FORCE_MAJEURE_NOTICE_HOURS}} giờ.
+            Hai bên thỏa thuận tạm dừng/giảm/chấm dứt hợp đồng theo nguyên tắc thiện chí.</p>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_11_TITLE.xx}}</div>
+        <p>{{ART_11_BODY.xx}} {{FORCE_MAJEURE_NOTICE_HOURS}} {{ART_11_HOURS.xx}}.</p>
+    </td>
+    </tr></tbody>
+</table>
+
+<!-- ĐIỀU 12 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 12. Giải quyết tranh chấp</div>
+        <p>Ưu tiên thương lượng. Không đạt kết quả trong {{DISPUTE_DAYS}} ngày:
+            giải quyết tại {{DISPUTE_FORUM.vi}} theo pháp luật Việt Nam.</p>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_12_TITLE.xx}}</div>
+        <p>{{ART_12_BODY.xx}} {{DISPUTE_DAYS}} {{ART_12_DAYS.xx}} {{DISPUTE_FORUM.xx}}.</p>
+    </td>
+    </tr></tbody>
+</table>
+
+<!-- ĐIỀU 13 -->
+<table class="layout">
+    <tbody><tr>
+    <td>
+        <div class="clause-title">Điều 13. Điều khoản chung</div>
+        <ul>
+            <li>Hiệu lực từ ngày ký hoặc {{EFFECTIVE_DATE.vi}}.</li>
+            <li>Phụ lục và biên bản bàn giao là phần không tách rời.</li>
+            <li>Hợp đồng được ký điện tử qua hệ thống VNPT eContract theo Luật Giao dịch điện tử 2023. Mỗi bên nhận một bản PDF đã ký có giá trị pháp lý tương đương bản gốc.</li>
+            <li>{{PREVAILING_LANGUAGE_CLAUSE.vi}}</li>
+        </ul>
+    </td>
+    <td>
+        <div class="clause-title">{{ART_13_TITLE.xx}}</div>
+        <ul>
+            <li>{{ART_13_LI1.xx}} {{EFFECTIVE_DATE.xx}}.</li>
+            <li>{{ART_13_LI2.xx}}</li>
+            <li>{{ART_13_LI3_EDIGITAL.xx}}</li>
+            <li>{{PREVAILING_LANGUAGE_CLAUSE.xx}}</li>
+        </ul>
+    </td>
+    </tr></tbody>
+</table>
+
+<br/><br/>
+<table class="layout">
+    <tbody><tr>
+    <td class="center">
+        <b>ĐẠI DIỆN BÊN A</b><br/>(Ký, ghi rõ họ tên)
+        <br/><br/><br/><br/>
+        <span style="color:white;font-size:1px;">SIGN_A</span>
+    </td>
+    <td class="center">
+        <b>ĐẠI DIỆN BÊN B</b><br/>(Ký, ghi rõ họ tên)
+        <br/><br/><br/><br/>
+        <span style="color:white;font-size:1px;">SIGN_B</span>
+    </td>
+    </tr></tbody>
+</table>
+
+</body>
+</html>

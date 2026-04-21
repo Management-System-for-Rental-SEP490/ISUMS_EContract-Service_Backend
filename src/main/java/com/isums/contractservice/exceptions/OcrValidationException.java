@@ -17,4 +17,7 @@ public class OcrValidationException extends RuntimeException {
     public static final String NAME_MISMATCH = "OCR_NAME_MISMATCH";
     public static final String NOT_BACK_SIDE = "OCR_NOT_BACK_SIDE";
     public static final String IMAGE_NOT_READABLE = "OCR_IMAGE_NOT_READABLE";
+    public static final String CANNOT_READ_PASSPORT = "OCR_CANNOT_READ_PASSPORT";
+    public static final String PASSPORT_MISMATCH = "OCR_PASSPORT_MISMATCH";
+    public static final String PASSPORT_EXPIRED = "OCR_PASSPORT_EXPIRED";
 }

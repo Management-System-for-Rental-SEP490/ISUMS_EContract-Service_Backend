@@ -123,9 +123,11 @@ public class EContractController {
             @ApiResponse(responseCode = "404", description = "契約が見つかりません")
     })
     @GetMapping("/{id}")
+    @PreAuthorize("isAuthenticated()")
     public com.isums.contractservice.domains.dtos.ApiResponse<EContractDto> getById(
-            @Parameter(description = "契約ID", required = true) @PathVariable UUID id) {
-        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getById(id), "Success");
+            @Parameter(description = "契約ID", required = true) @PathVariable UUID id,
+            org.springframework.security.core.Authentication auth) {
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getById(id, auth), "Success");
     }
 
     @Operation(
@@ -138,10 +140,11 @@ public class EContractController {
             @ApiResponse(responseCode = "403", description = "権限がありません")
     })
     @GetMapping
-//    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER','TENANT')")
     public com.isums.contractservice.domains.dtos.ApiResponse<PageResponse<EContractDto>> getAll(
-            @ParameterObject @Valid @ModelAttribute PageRequestParams params) {
-        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getAll(params.toPageRequest()), "Success");
+            @ParameterObject @Valid @ModelAttribute PageRequestParams params,
+            org.springframework.security.core.Authentication auth) {
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getAll(params.toPageRequest(), auth), "Success");
     }
 
     @Operation(
@@ -388,6 +391,64 @@ public class EContractController {
     public com.isums.contractservice.domains.dtos.ApiResponse<Boolean> cccdStatus(
             @Parameter(description = "契約ID", required = true) @PathVariable UUID id) {
         return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.hasCccd(id), "Success");
+    }
+
+    @Operation(
+            summary = "[TENANT nước ngoài] Xác nhận hợp đồng bằng hộ chiếu",
+            description = """
+                    Dành cho tenant nước ngoài (`tenantType = FOREIGNER`).
+
+                    Flow:
+                    1. Magic token xác thực (1-time use)
+                    2. OCR trang thông tin hộ chiếu — parse MRZ TD3 theo ICAO 9303 (số hộ chiếu, họ tên, quốc tịch, ngày sinh, giới tính, hạn)
+                    3. Đối chiếu số hộ chiếu + họ tên với hợp đồng
+                    4. Kiểm tra hạn hộ chiếu (chưa hết)
+                    5. Upload ảnh lên S3
+                    6. Append trang phụ lục hộ chiếu vào PDF
+                    7. Tạo document + updateProcess + sendProcess tới VNPT
+                    8. Contract → READY, token invalidate
+
+                    **Lỗi thường gặp:**
+                    - MRZ không đọc được → chụp rõ 2 dòng cuối hộ chiếu
+                    - Số hộ chiếu không khớp → kiểm tra đã nhập đúng lúc tạo hợp đồng chưa
+                    - Hộ chiếu đã hết hạn → gia hạn trước khi ký
+                    """,
+            parameters = @Parameter(
+                    name = "X-Contract-Token",
+                    in = ParameterIn.HEADER,
+                    required = true,
+                    description = "Magic token nhận qua email (1-time use)"
+            )
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Xác nhận thành công"),
+            @ApiResponse(responseCode = "400", description = "Token invalid / OCR fail / passport mismatch / expired"),
+            @ApiResponse(responseCode = "404", description = "Contract not found"),
+            @ApiResponse(responseCode = "500", description = "VNPT hoặc S3 error")
+    })
+    @PutMapping(value = "/{id}/passport", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public com.isums.contractservice.domains.dtos.ApiResponse<VnptDocumentDto> tenantConfirmWithPassport(
+            @Parameter(description = "Contract ID", required = true) @PathVariable UUID id,
+            @Parameter(description = "Ảnh trang thông tin hộ chiếu (jpg/png, 50KB–10MB)", required = true)
+            @RequestParam("passportImage") MultipartFile passportImage,
+            @RequestHeader("X-Contract-Token") String contractToken) {
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(
+                service.tenantConfirmWithPassport(id, passportImage, contractToken),
+                "Xác nhận thành công. Hợp đồng đã được gửi lên hệ thống ký điện tử.");
+    }
+
+    @Operation(
+            summary = "Tenant đã upload hộ chiếu chưa?",
+            description = "`true` nếu tenant đã upload ảnh hộ chiếu."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "true = có, false = chưa"),
+            @ApiResponse(responseCode = "404", description = "Contract not found")
+    })
+    @GetMapping("/{id}/passport-status")
+    public com.isums.contractservice.domains.dtos.ApiResponse<Boolean> passportStatus(
+            @Parameter(description = "Contract ID", required = true) @PathVariable UUID id) {
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.hasPassport(id), "Success");
     }
 
     @Operation(

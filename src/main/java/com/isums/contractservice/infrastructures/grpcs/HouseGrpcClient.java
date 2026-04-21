@@ -4,7 +4,9 @@ import com.isums.houseservice.grpc.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -33,5 +35,12 @@ public class HouseGrpcClient {
     public TenantResponse getTenantByUserId(UUID userId) {
         GetTenantByUserIdRequest req = GetTenantByUserIdRequest.newBuilder().setUserId(userId.toString()).build();
         return tenantStub.getTenantByUserId(req);
+    }
+
+    /** Returns UUIDs of houses visible to a MANAGER (houses in regions they manage). */
+    public Set<UUID> getManagedHouseIds(UUID managerId) {
+        return getHousesByManagerRegion(managerId).getHouseList().stream()
+                .map(h -> UUID.fromString(h.getId()))
+                .collect(Collectors.toSet());
     }
 }

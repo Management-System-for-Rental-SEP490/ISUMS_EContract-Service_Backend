@@ -7,9 +7,11 @@ import com.isums.contractservice.domains.dtos.FileInfoDto;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.mock.env.MockEnvironment;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 
@@ -42,10 +44,13 @@ class VnptEContractClientImplTest {
         gatewayServer = MockRestServiceServer.bindTo(gatewayBuilder).build();
         directServer = MockRestServiceServer.bindTo(directBuilder).build();
 
+        Environment env = new MockEnvironment();
+
         client = new VnptEContractClientImpl(
                 gatewayBuilder.build(),
                 directBuilder.build(),
                 props,
+                env,
                 new ObjectMapper()
         );
     }
