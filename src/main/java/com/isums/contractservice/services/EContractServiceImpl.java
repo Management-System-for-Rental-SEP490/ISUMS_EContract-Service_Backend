@@ -595,6 +595,7 @@ public class EContractServiceImpl implements EContractService {
     @Transactional
     @Caching(evict = {
             @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "user-house-access", allEntries = true),
             @CacheEvict(value = "marketplace-bookable", allEntries = true),
             @CacheEvict(value = "marketplace-locked", allEntries = true)
     })
@@ -649,6 +650,7 @@ public class EContractServiceImpl implements EContractService {
     @Transactional
     @Caching(evict = {
             @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "user-house-access", allEntries = true),
             @CacheEvict(value = "marketplace-bookable", allEntries = true),
             @CacheEvict(value = "marketplace-locked", allEntries = true)
     })
@@ -680,6 +682,7 @@ public class EContractServiceImpl implements EContractService {
     @Transactional
     @Caching(evict = {
             @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "user-house-access", allEntries = true),
             @CacheEvict(value = "marketplace-bookable", allEntries = true),
             @CacheEvict(value = "marketplace-locked", allEntries = true)
     })
@@ -711,6 +714,7 @@ public class EContractServiceImpl implements EContractService {
     @Transactional
     @Caching(evict = {
             @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "user-house-access", allEntries = true),
             @CacheEvict(value = "marketplace-bookable", allEntries = true),
             @CacheEvict(value = "marketplace-locked", allEntries = true)
     })

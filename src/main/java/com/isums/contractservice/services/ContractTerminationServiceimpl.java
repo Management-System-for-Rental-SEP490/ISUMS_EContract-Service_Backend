@@ -13,6 +13,8 @@ import com.isums.contractservice.infrastructures.repositories.EContractRepositor
 import com.isums.userservice.grpc.UserResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +33,12 @@ public class ContractTerminationServiceimpl implements ContractTerminationServic
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "user-house-access", allEntries = true),
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public void handleExpiredContract(EContract contract) {
         contract.getStatus().validateTransition(EContractStatus.PENDING_TERMINATION);
         contract.setStatus(EContractStatus.PENDING_TERMINATION);

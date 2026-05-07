@@ -66,6 +66,8 @@ public class MaintenanceEventListeners {
                             .contractId(event.getContractId())
                             .inspectionId(event.getReferenceId())
                             .managerId(contract.getCreatedBy())
+                            .houseId(contract.getHouseId())
+                            .tenantId(contract.getUserId())
                             .deductionAmount(0L)
                             .messageId(UUID.randomUUID().toString())
                             .build());

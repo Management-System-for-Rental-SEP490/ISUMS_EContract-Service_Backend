@@ -24,6 +24,7 @@ import com.isums.contractservice.domains.enums.RenewalRequestStatus;
 import com.isums.contractservice.domains.events.CancelDepositInvoiceRequestedEvent;
 import com.isums.contractservice.domains.events.ContractReplacedEvent;
 import com.isums.contractservice.domains.events.DepositRefundConfirmedEvent;
+import com.isums.contractservice.domains.events.RelocationReportedEvent;
 import com.isums.contractservice.exceptions.NotFoundException;
 import com.isums.contractservice.infrastructures.abstracts.ContractRelocationService;
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
@@ -38,6 +39,9 @@ import com.isums.houseservice.grpc.HouseResponse;
 import com.isums.userservice.grpc.UserResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -102,6 +106,10 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public ContractRelocationRequestDto submit(UUID contractId, UUID actorId, CreateRelocationRequest request) {
         UUID tenantId = resolveInternalTenantId(actorId);
         EContract contract = contractRepo.findById(contractId)
@@ -177,6 +185,10 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public ContractRelocationRequestDto reportLandlordFaultByContractNumber(
             String contractNumber,
             UUID actorId,
@@ -192,6 +204,10 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public ContractRelocationRequestDto reportLandlordFaultByContractId(
             UUID contractId,
             UUID actorId,
@@ -299,6 +315,20 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
         log.info("[Relocation] LANDLORD_FAULT_REPORTED id={} oldContractId={} recommendedHouseId={}",
                 saved.getId(), contract.getId(), request.recommendedHouseId());
+
+        outboxPublisher.enqueue(
+                "relocation.reported",
+                contract.getId().toString(),
+                RelocationReportedEvent.builder()
+                        .relocationRequestId(saved.getId())
+                        .oldContractId(contract.getId())
+                        .oldHouseId(contract.getHouseId())
+                        .tenantId(contract.getUserId())
+                        .staffReportedBy(staffInternalId)
+                        .reportReason(request.reportReason())
+                        .reportedAt(now)
+                        .build());
+
         return toDto(saved);
     }
 
@@ -365,6 +395,12 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "user-house-access", allEntries = true),
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public ContractRelocationRequestDto review(
             UUID requestId,
             UUID actorId,
@@ -607,6 +643,10 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public ContractRelocationRequestDto acceptQuote(UUID requestId, UUID actorId) {
         UUID tenantId = resolveInternalTenantId(actorId);
         ContractRelocationRequest relocation = findRequest(requestId);
@@ -633,10 +673,11 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
     @Override
     @Transactional
-    @org.springframework.cache.annotation.Caching(evict = {
-            @org.springframework.cache.annotation.CacheEvict(value = "user-contracts", allEntries = true),
-            @org.springframework.cache.annotation.CacheEvict(value = "marketplace-bookable", allEntries = true),
-            @org.springframework.cache.annotation.CacheEvict(value = "marketplace-locked", allEntries = true)
+    @Caching(evict = {
+            @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "user-house-access", allEntries = true),
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
     })
     public EContractDto createReplacementContract(
             UUID requestId,
@@ -785,6 +826,10 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public ContractRelocationRequestDto cancelByTenant(UUID requestId, UUID actorId) {
         UUID tenantId = resolveInternalTenantId(actorId);
         ContractRelocationRequest relocation = findRequest(requestId);
@@ -807,6 +852,10 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public ContractRelocationRequestDto cancelByManager(UUID requestId, UUID actorId, boolean landlord) {
         ContractRelocationRequest relocation = findRequest(requestId);
         UUID internalActorId = resolveInternalTenantId(actorId);
@@ -832,10 +881,11 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
     @Override
     @Transactional
-    @org.springframework.cache.annotation.Caching(evict = {
-            @org.springframework.cache.annotation.CacheEvict(value = "user-contracts", allEntries = true),
-            @org.springframework.cache.annotation.CacheEvict(value = "user-house-access", allEntries = true),
-            @org.springframework.cache.annotation.CacheEvict(value = "marketplace-bookable", allEntries = true)
+    @Caching(evict = {
+            @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "user-house-access", allEntries = true),
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
     })
     public ContractRelocationRequestDto confirmHandover(UUID requestId, UUID actorId, boolean landlord) {
         ContractRelocationRequest relocation = findRequest(requestId);
@@ -1203,7 +1253,7 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
     @Override
     @Transactional(readOnly = true)
-    @org.springframework.cache.annotation.Cacheable(value = "marketplace-bookable", key = "#actorId")
+    @Cacheable(value = "marketplace-bookable", key = "#actorId")
     public java.util.List<DepositBookableHouseDto> findDepositBookableHouses(UUID actorId) {
         UUID callerInternalId = resolveInternalTenantId(actorId);
         Instant now = Instant.now();
@@ -1267,7 +1317,7 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
     @Override
     @Transactional(readOnly = true)
-    @org.springframework.cache.annotation.Cacheable(value = "marketplace-locked", key = "'all'")
+    @Cacheable(value = "marketplace-locked", key = "'all'")
     public java.util.Set<UUID> findLockedHouseIdsForCreate() {
         return contractRepo.findHouseIdsByStatusIn(PRE_COMPLETION_STATUSES);
     }

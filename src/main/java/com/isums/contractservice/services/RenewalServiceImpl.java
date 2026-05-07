@@ -19,6 +19,8 @@ import com.isums.contractservice.infrastructures.repositories.RenewalRequestRepo
 import com.isums.userservice.grpc.UserResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -43,6 +45,10 @@ public class RenewalServiceImpl implements RenewalService {
     private final KafkaTemplate<String, Object> kafka;
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public RenewalRequestDto requestRenewal(UUID contractId, UUID tenantUserId, RenewalRequestBody body) {
         EContract contract = contractRepo.findById(contractId)
                 .orElseThrow(() -> new NotFoundException("Contract not found"));
@@ -94,6 +100,10 @@ public class RenewalServiceImpl implements RenewalService {
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public void declineRenewal(UUID renewalRequestId, UUID actorId, String reason) {
         RenewalRequest request = renewalRequestRepo.findById(renewalRequestId)
                 .orElseThrow(() -> new NotFoundException("Renewal request not found"));
@@ -135,6 +145,12 @@ public class RenewalServiceImpl implements RenewalService {
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "user-house-access", allEntries = true),
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public void markCompleted(UUID renewalRequestId) {
         RenewalRequest request = renewalRequestRepo.findById(renewalRequestId)
                 .orElseThrow(() -> new NotFoundException("Renewal request not found"));

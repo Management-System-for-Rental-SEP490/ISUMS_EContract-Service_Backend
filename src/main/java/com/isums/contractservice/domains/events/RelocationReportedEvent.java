@@ -5,18 +5,19 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class InspectionDoneNotifyEvent {
-    private UUID contractId;
-    private UUID inspectionId;
-    private UUID managerId;
-    private UUID houseId;
+public class RelocationReportedEvent {
+    private UUID relocationRequestId;
+    private UUID oldContractId;
+    private UUID oldHouseId;
     private UUID tenantId;
-    private Long deductionAmount;
-    private String messageId;
+    private UUID staffReportedBy;
+    private String reportReason;
+    private Instant reportedAt;
 }
