@@ -12,7 +12,6 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -44,7 +43,6 @@ public class OutboxPoller {
 
     private final OutboxEventRepository repo;
     private final KafkaTemplate<String, Object> kafka;
-    private final ObjectMapper mapper;
 
     @Scheduled(fixedDelay = 2_000)
     @Transactional
@@ -75,11 +73,17 @@ public class OutboxPoller {
                 }
             }
 
+            // Pass the Map payload directly — Kafka producer is configured with
+            // JsonSerializer (see application.properties), which serializes to
+            // JSON once. Pre-serializing to String here caused a
+            // double-encoding bug: JsonSerializer would wrap the JSON string
+            // with additional quotes/escapes, and consumers failed to
+            // deserialize ("no String-argument constructor for ..."Event").
             ProducerRecord<String, Object> record = new ProducerRecord<>(
                     event.getTopic(),
                     null,
                     event.getPartitionKey(),
-                    mapper.writeValueAsString(event.getPayload()),
+                    event.getPayload(),
                     headers);
 
             kafka.send(record).get();   // block until broker ack (at-least-once)

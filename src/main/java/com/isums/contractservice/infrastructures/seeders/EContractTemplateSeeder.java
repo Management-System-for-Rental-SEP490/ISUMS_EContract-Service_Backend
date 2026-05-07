@@ -15,13 +15,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 
-/**
- * Seeds the DB-backed lease-house templates from classpath resources on startup.
- * Upserts three codes:
- *   LEASE_HOUSE          — legacy VN-only template (kept for backward compat).
- *   LEASE_HOUSE_VI       — current VN-only lease-house-vn-v1.html.
- *   LEASE_HOUSE_BILINGUAL — two-column bilingual lease-house-bilingual-v1.html.
- */
 @Component
 @RequiredArgsConstructor
 public class EContractTemplateSeeder implements ApplicationRunner {
@@ -76,3 +69,4 @@ public class EContractTemplateSeeder implements ApplicationRunner {
         return s1.equals(s2);
     }
 }
+

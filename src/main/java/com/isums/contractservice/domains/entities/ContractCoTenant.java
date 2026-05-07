@@ -54,6 +54,15 @@ public class ContractCoTenant {
     @Column(name = "phone_number", length = 32)
     private String phoneNumber;
 
+    @Column(name = "passport_number", length = 64)
+    private String passportNumber;
+
+    @Column(name = "visa_type", length = 64)
+    private String visaType;
+
+    @Column(name = "visa_expiry_date")
+    private LocalDate visaExpiryDate;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -62,3 +71,4 @@ public class ContractCoTenant {
     @Column(name = "updated_at")
     private Instant updatedAt;
 }
+

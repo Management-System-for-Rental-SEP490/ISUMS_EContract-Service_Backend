@@ -5,6 +5,7 @@ import com.isums.contractservice.domains.entities.LandlordProfile;
 import lombok.Builder;
 import lombok.Value;
 
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Value
@@ -21,6 +22,12 @@ public class LandlordProfileDto {
     String phoneNumber;
     String email;
     String bankAccount;
+    LocalDate dateOfBirth;
+    String permanentAddress;
+    String bankName;
+    String taxCode;
+    Integer depositWaitDays;
+    Integer forceMajeureNoticeHours;
 
     public static LandlordProfileDto from(LandlordProfile p) {
         return LandlordProfileDto.builder()
@@ -34,6 +41,12 @@ public class LandlordProfileDto {
                 .phoneNumber(p.getPhoneNumber())
                 .email(p.getEmail())
                 .bankAccount(p.getBankAccount())
+                .dateOfBirth(p.getDateOfBirth())
+                .permanentAddress(p.getPermanentAddress())
+                .bankName(p.getBankName())
+                .taxCode(p.getTaxCode())
+                .depositWaitDays(p.getDepositWaitDays())
+                .forceMajeureNoticeHours(p.getForceMajeureNoticeHours())
                 .build();
     }
 }

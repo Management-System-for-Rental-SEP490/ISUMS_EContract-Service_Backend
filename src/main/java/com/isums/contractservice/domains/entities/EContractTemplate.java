@@ -1,5 +1,7 @@
 package com.isums.contractservice.domains.entities;
 
+import com.isums.common.i18n.TranslationMap;
+import com.isums.common.i18n.TranslationMapConverter;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -31,6 +33,10 @@ public class EContractTemplate {
 
     @Column(nullable = false)
     private String name;
+
+    @Column(name = "name_translations", columnDefinition = "text")
+    @Convert(converter = TranslationMapConverter.class)
+    private TranslationMap nameTranslations;
 
     @Column(name = "content_html", columnDefinition = "text")
     private String contentHtml;

@@ -141,3 +141,18 @@ dependencyManagement {
 tasks.named('test') {
     useJUnitPlatform()
 }
+
+// Force UTF-8 across all JVM toolchains. Without this, Windows JDKs default
+// to the platform encoding (CP1252 in vi-VN locale) and source files
+// containing Vietnamese / Japanese literals get mangled at compile time —
+// the resulting .class file then serves `?` / U+FFFD to clients regardless
+// of the HTTP charset header. Applies to compile, javadoc, and test tasks.
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+tasks.withType(Javadoc).configureEach {
+    options.encoding = 'UTF-8'
+}
+tasks.withType(Test).configureEach {
+    systemProperty 'file.encoding', 'UTF-8'
+}

@@ -403,7 +403,6 @@ public class VnptEContractClientImpl implements VnptEContractClient {
     }
 
     @Override
-    @Cacheable(value = "vnptProcessCode", key = "#processCode")
     public String getAccessInfoByProcessCode(String processCode) {
         final String uri = "/api/auth/process-code-login";
 
@@ -435,8 +434,7 @@ public class VnptEContractClientImpl implements VnptEContractClient {
             }
 
             try {
-                return mapper.readValue(raw, new TypeReference<VnptResult<VnptDocumentDto>>() {
-                });
+                return VnptResult.success(mapper.readValue(raw, VnptDocumentDto.class));
             } catch (Exception e) {
                 return VnptResult.error("Cannot parse VNPT response: " + e.getClass().getSimpleName() + ": " + e.getMessage());
             }

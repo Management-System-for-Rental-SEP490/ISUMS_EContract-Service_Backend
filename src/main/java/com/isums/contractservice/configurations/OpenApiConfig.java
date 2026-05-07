@@ -22,7 +22,7 @@ public class OpenApiConfig {
                 .info(new Info()
                         .title("EContract Service API")
                         .version("v1")
-                        .description("Có nhiều thứ rất là khó nói vậy nên là lá đò"))
+                        .description("ISUMS service API documentation"))
                 .addSecurityItem(new SecurityRequirement().addList(BEARER_SCHEME))
                 .components(new Components().addSecuritySchemes(
                         BEARER_SCHEME,
@@ -31,3 +31,4 @@ public class OpenApiConfig {
                 ));
     }
 }
+

@@ -47,12 +47,12 @@ public class RenewalServiceImpl implements RenewalService {
         EContract contract = contractRepo.findById(contractId)
                 .orElseThrow(() -> new NotFoundException("Contract not found"));
 
-        if (contract.getStatus() != EContractStatus.IN_PROGRESS) {
-            throw new BusinessException("Chỉ gia hạn được hợp đồng đang hoạt động");
+        if (contract.getStatus() != EContractStatus.COMPLETED) {
+            throw new BusinessException("Only signed (COMPLETED) contracts may be renewed");
         }
 
         if (!contract.getUserId().equals(tenantUserId)) {
-            throw new ForbiddenException("Không có quyền gia hạn hợp đồng này");
+            throw new ForbiddenException("No permission to renew this contract");
         }
 
         renewalRequestRepo.findByContractIdAndStatusNotIn(
@@ -61,7 +61,7 @@ public class RenewalServiceImpl implements RenewalService {
                         RenewalRequestStatus.CANCELLED_BY_TENANT)
         ).ifPresent(r -> {
             throw new BusinessException(
-                    "Bạn đã gửi yêu cầu gia hạn, vui lòng chờ quản lý liên hệ");
+                    "Renewal request submitted; please wait for the manager to contact you");
         });
 
         boolean hasCompeting = renewalRequestRepo
@@ -117,7 +117,7 @@ public class RenewalServiceImpl implements RenewalService {
                                 "tenantName", contract.getTenantName(),
                                 "contractId", contract.getId().toString()
                                         .substring(0, 8).toUpperCase(),
-                                "reason", reason != null ? reason : "Không có lý do"
+                                "reason", reason != null ? reason : "No reason provided"
                         ))
                         .build());
 
@@ -172,7 +172,7 @@ public class RenewalServiceImpl implements RenewalService {
 
         return RenewalStatusDto.builder()
                 .canRequestRenewal(!activeRequest.isPresent()
-                        && contract.getStatus() == EContractStatus.IN_PROGRESS)
+                        && contract.getStatus() == EContractStatus.COMPLETED)
                 .hasActiveRequest(activeRequest.isPresent())
                 .activeRequestStatus(activeRequest
                         .map(r -> r.getStatus().name()).orElse(null))
@@ -199,11 +199,11 @@ public class RenewalServiceImpl implements RenewalService {
                                             .substring(0, 8).toUpperCase(),
                                     "hasCompetingDeposit",
                                     request.getHasCompetingDeposit()
-                                            ? "Đã có khách khác đặt cọc phòng này"
-                                            : "Chưa có khách nào đặt cọc",
+                                            ? "Another tenant has already deposited for this room"
+                                            : "No tenant has deposited yet",
                                     "note", request.getTenantNote() != null
                                             ? request.getTenantNote()
-                                            : "Không có ghi chú"
+                                            : "No note"
                             ))
                             .build());
 
@@ -217,3 +217,4 @@ public class RenewalServiceImpl implements RenewalService {
         }
     }
 }
+

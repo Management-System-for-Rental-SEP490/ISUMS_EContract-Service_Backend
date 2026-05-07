@@ -107,7 +107,7 @@ class PowerCutServiceImplTest {
 
             assertThatThrownBy(() -> service.confirmPowerCut(contractId, actorId))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining("không đang hoạt động");
+                    .hasMessageContaining("not active");
             verifyNoInteractions(kafka);
         }
 
@@ -119,7 +119,7 @@ class PowerCutServiceImplTest {
 
             assertThatThrownBy(() -> service.confirmPowerCut(contractId, actorId))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining("không có điều khoản cắt điện");
+                    .hasMessageContaining("no power-cut clause");
             verifyNoInteractions(kafka);
         }
 

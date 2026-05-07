@@ -64,6 +64,12 @@ public class LandlordProfile {
     @Column(name = "tax_code", length = 32)
     private String taxCode;
 
+    @Column(name = "deposit_wait_days", nullable = false)
+    private Integer depositWaitDays;
+
+    @Column(name = "force_majeure_notice_hours", nullable = false)
+    private Integer forceMajeureNoticeHours;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

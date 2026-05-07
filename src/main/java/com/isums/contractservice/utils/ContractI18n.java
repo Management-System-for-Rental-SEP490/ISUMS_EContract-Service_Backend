@@ -11,15 +11,6 @@ import com.isums.contractservice.domains.enums.VisitorPolicy;
 
 import java.util.Map;
 
-/**
- * Static translations for boilerplate text used by the bilingual lease-house
- * template. Three-language registry: vi (source) / en / ja.
- *
- * Rationale: legal boilerplate must render with canonical wording. Routing
- * these strings through AWS Translate at render time would introduce drift
- * across contracts and could surface awkward phrasings. User-supplied free
- * text (purpose, dispute forum, etc.) still goes through AWS Translate.
- */
 public final class ContractI18n {
 
     private ContractI18n() {}
@@ -29,11 +20,8 @@ public final class ContractI18n {
         return cl == ContractLanguage.VI_JA ? "ja" : "en";
     }
 
-    // =========================================================================
-    // Boilerplate strings used in template (key → {vi, en, ja})
-    // =========================================================================
     private static final Map<String, Map<String, String>> BOILER = Map.ofEntries(
-            // Headings
+
             entry("HEADING_COUNTRY", "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
                     "THE SOCIALIST REPUBLIC OF VIETNAM",
                     "ベトナム社会主義共和国"),
@@ -45,7 +33,6 @@ public final class ContractI18n {
                     "住宅賃貸借契約"),
             entry("HEADING_NO", "Số:", "No.:", "番号:"),
 
-            // Legal basis
             entry("LEGAL_BASIS", "Căn cứ pháp lý", "Legal basis", "法的根拠"),
             entry("LAW_CIVIL",
                     "Bộ luật Dân sự 2015 (Điều 472–482; Điều 408).",
@@ -68,7 +55,6 @@ public final class ContractI18n {
                     "Agreement between the parties.",
                     "両当事者間の合意。"),
 
-            // Section labels
             entry("LABEL_LANDLORD", "Bên cho thuê (Bên A)", "Lessor (Party A)", "賃貸人（甲）"),
             entry("LABEL_TENANT", "Bên thuê (Bên B)", "Lessee (Party B)", "賃借人（乙）"),
             entry("LABEL_FULL_NAME", "Họ và tên:", "Full name:", "氏名:"),
@@ -91,7 +77,6 @@ public final class ContractI18n {
             entry("LABEL_TEMP_RES", "Đăng ký tạm trú:", "Temporary residence registration:", "一時居住登録:"),
             entry("LAND_CERT_ISSUED_BY", "cấp ngày X bởi Y", "issued on", "発行日"),
 
-            // ART_1 — Subject matter
             entry("ART_1_TITLE", "Điều 1. Đối tượng hợp đồng",
                     "Article 1. Subject matter",
                     "第1条 目的物"),
@@ -116,7 +101,6 @@ public final class ContractI18n {
                     "Certificate of ownership/use rights:",
                     "所有権／使用権証明書:"),
 
-            // ART_2 — Term
             entry("ART_2_TITLE", "Điều 2. Thời hạn thuê",
                     "Article 2. Lease term",
                     "第2条 賃貸期間"),
@@ -128,7 +112,6 @@ public final class ContractI18n {
                     "Renewal must be agreed in writing at least",
                     "更新は書面で少なくとも"),
 
-            // ART_3 — Rent & payment
             entry("ART_3_TITLE", "Điều 3. Giá thuê và thanh toán",
                     "Article 3. Rent and payment",
                     "第3条 賃料及び支払"),
@@ -143,7 +126,6 @@ public final class ContractI18n {
                     "支払遅延が"),
             entry("ART_3_DAYS", "ngày", "days", "日を超える場合"),
 
-            // ART_4 — Deposit
             entry("ART_4_TITLE", "Điều 4. Đặt cọc",
                     "Article 4. Security deposit",
                     "第4条 敷金"),
@@ -155,7 +137,6 @@ public final class ContractI18n {
                     "敷金返還期限:"),
             entry("ART_4_DAYS", "ngày sau thanh lý.", "days after settlement.", "日以内（契約清算後）。"),
 
-            // ART_5 — Handover
             entry("ART_5_TITLE", "Điều 5. Bàn giao",
                     "Article 5. Handover",
                     "第5条 引渡し"),
@@ -168,7 +149,6 @@ public final class ContractI18n {
                     "Initial meter readings (for record only): electricity",
                     "初期メーター値（記録のみ）: 電気"),
 
-            // ART_6 — Utilities
             entry("ART_6_TITLE", "Điều 6. Dịch vụ điện, nước, internet",
                     "Article 6. Utilities",
                     "第6条 電気・水道・インターネット"),
@@ -180,12 +160,10 @@ public final class ContractI18n {
                     "一棟貸し。乙は電気・水道・インターネット等を供給事業者と直接契約し支払う。" +
                             "甲は本契約を通じてこれらを徴収しない。"),
 
-            // ART_7 — House rules (items inline in template using LABEL_*/POLICY values)
             entry("ART_7_TITLE", "Điều 7. Nội quy và quyền cư trú",
                     "Article 7. House rules and residence",
                     "第7条 ハウスルール及び居住"),
 
-            // ART_8 — Landlord rights & duties
             entry("ART_8_TITLE", "Điều 8. Quyền và nghĩa vụ Bên A",
                     "Article 8. Lessor's rights and obligations",
                     "第8条 甲の権利義務"),
@@ -210,7 +188,6 @@ public final class ContractI18n {
                     "Issue rent receipts upon legitimate request.",
                     "正当な要求があれば賃料受領書を発行すること。"),
 
-            // ART_9 — Tenant rights & duties
             entry("ART_9_TITLE", "Điều 9. Quyền và nghĩa vụ Bên B",
                     "Article 9. Lessee's rights and obligations",
                     "第9条 乙の権利義務"),
@@ -231,7 +208,6 @@ public final class ContractI18n {
                     "Comply with residence laws and the house rules in Article 7.",
                     "居住法及び第7条のハウスルールに従うこと。"),
 
-            // ART_10 — Termination
             entry("ART_10_TITLE", "Điều 10. Chấm dứt hợp đồng",
                     "Article 10. Termination",
                     "第10条 解除"),
@@ -260,8 +236,23 @@ public final class ContractI18n {
                     "Lỗi Bên B:",
                     "Lessee's fault:",
                     "乙の過失:"),
+            entry("ART_10_UNINHABITABLE_TITLE",
+                    "Nhà không đủ điều kiện sử dụng:",
+                    "Uninhabitable premises:",
+                    "居住に適さない物件:"),
+            entry("ART_10_UNINHABITABLE_BODY",
+                    "Nếu sau khi ký nhưng trước hoặc tại thời điểm bàn giao, Bên A hoặc nhân sự kỹ thuật được Bên A chỉ định xác nhận Nhà thuê không bảo đảm điều kiện sử dụng an toàn, hợp pháp hoặc không phù hợp mục đích thuê do nguyên nhân không thuộc lỗi Bên B, Bên B không bị mất cọc. Trong thời hạn hoàn cọc đã thỏa thuận, Bên A phải bố trí nhà thay thế được Bên B chấp thuận và chuyển tiền cọc sang hợp đồng/phụ lục thay thế, hoặc hoàn trả toàn bộ tiền cọc, tiền thuê/trả trước chưa sử dụng và các khoản đã thu liên quan. Phạt cọc/bồi thường, nếu có, thực hiện theo Bộ luật Dân sự 2015 và thỏa thuận hợp pháp của các bên.",
+                    "If, after signing but before or at handover, Party A or Party A's appointed technical staff confirms that the Premises are unsafe, unlawful or unsuitable for residential use for reasons not attributable to Party B, Party B shall not forfeit the deposit. Within the agreed deposit-refund period, Party A shall provide a replacement accepted by Party B and transfer the deposit to the replacement contract/addendum, or refund all deposit, unused prepaid rent and related amounts collected. Any deposit penalty or damages, if applicable, shall follow the 2015 Civil Code and the parties' lawful agreement.",
+                    "署名後、引渡し前又は引渡し時に、甲又は甲が指定した技術担当者が、乙の責めに帰さない事由により本物件が安全性、合法性又は居住目的への適合性を満たさないと確認した場合、乙は敷金を没収されない。合意された敷金返還期限内に、甲は乙が承諾する代替物件を提供して敷金を代替契約又は覚書に移行するか、敷金、未使用の前払賃料及び関連して受領済みの金額を全額返還する。違約金又は損害賠償がある場合は、2015年民法及び両当事者の有効な合意に従う。"),
+            entry("ART_10_RELOCATION_REQUEST_TITLE",
+                    "Đổi nhà theo nhu cầu của Bên B trong thời hạn thuê:",
+                    "Tenant-requested relocation during the lease term:",
+                    "賃貸期間中の乙からの転居希望:"),
+            entry("ART_10_RELOCATION_REQUEST_BODY",
+                    "Nếu Bên B đang thuê và đề nghị chuyển sang nhà khác vì nhu cầu sử dụng thay đổi, việc đổi nhà chỉ được thực hiện khi Bên A chấp thuận bằng văn bản/báo giá trên hệ thống, hai bên thống nhất ngày bàn giao, ký hợp đồng hoặc phụ lục thay thế và Bên B thanh toán đầy đủ phần chênh lệch đến hạn. Tiền cọc của hợp đồng cũ được đối trừ/chuyển sang hợp đồng mới sau khi kiểm tra hiện trạng nhà cũ; phần còn thừa được hoàn trả, phần còn thiếu Bên B phải thanh toán trước khi nhận bàn giao nhà mới.",
+                    "If Party B is currently leasing the Premises and requests to move to another house due to changed household needs, the relocation takes effect only after Party A approves the written quote/system record, both parties agree on the handover date, sign a replacement contract or addendum, and Party B pays in full any due differential. The deposit of the old contract is offset or transferred to the new contract after inspection of the old premises; any remaining balance is refunded to Party B, and any shortfall must be paid by Party B before handover of the new house.",
+                    "乙が本物件を賃借中に、生活上の必要性の変更を理由に他の住宅への移転を希望する場合、当該転居は、甲がシステム上の書面見積／記録を承認し、両当事者が引渡日について合意し、代替契約又は覚書に署名し、乙が支払期限の到来した差額を全額支払った場合に限り効力を生ずる。旧契約の敷金は旧物件の現況確認後、新契約に充当又は引き継がれ、残余があれば乙に返還し、不足があれば乙は新物件の引渡し前に支払うものとする。"),
 
-            // ART_11 — Force majeure
             entry("ART_11_TITLE", "Điều 11. Bất khả kháng",
                     "Article 11. Force majeure",
                     "第11条 不可抗力"),
@@ -274,7 +265,6 @@ public final class ContractI18n {
                     "hours. The parties shall agree in good faith to suspend, reduce or terminate.",
                     "時間以内に通知すること。両当事者は誠実に中止・減額・解除を協議する。"),
 
-            // ART_12 — Disputes
             entry("ART_12_TITLE", "Điều 12. Giải quyết tranh chấp",
                     "Article 12. Dispute resolution",
                     "第12条 紛争解決"),
@@ -287,7 +277,6 @@ public final class ContractI18n {
                     "days, the dispute shall be submitted to",
                     "日以内に解決しない場合、次の機関にて解決する:"),
 
-            // ART_13 — General
             entry("ART_13_TITLE", "Điều 13. Điều khoản chung",
                     "Article 13. General provisions",
                     "第13条 一般条項"),
@@ -317,11 +306,41 @@ public final class ContractI18n {
                     "This contract is electronically signed via VNPT eContract under the Law on Electronic Transactions 2023. Each party receives a signed PDF copy with equivalent legal force to the original.",
                     "本契約は電子取引法2023に基づきVNPT eContractシステムで電子署名されます。各当事者は原本と同等の法的効力を有する署名済PDFを受領します。"),
 
-            // Prevailing language clause
             entry("PREVAILING_LANGUAGE_CLAUSE",
                     "Bản tiếng Việt có giá trị pháp lý ưu tiên khi có khác biệt giữa hai ngôn ngữ.",
                     "The Vietnamese version shall prevail in case of discrepancy between the two versions.",
-                    "両言語間に相違がある場合はベトナム語版が優先する。")
+                    "両言語間に相違がある場合はベトナム語版が優先する。"),
+
+            entry("SIGN_A_LABEL",
+                    "ĐẠI DIỆN BÊN A",
+                    "REPRESENTATIVE OF PARTY A",
+                    "甲方代表"),
+            entry("SIGN_B_LABEL",
+                    "ĐẠI DIỆN BÊN B",
+                    "REPRESENTATIVE OF PARTY B",
+                    "乙方代表"),
+            entry("SIGN_SUBTITLE",
+                    "(Ký, ghi rõ họ tên)",
+                    "(Sign and print full name)",
+                    "(署名、氏名明記)"),
+
+            entry("UNIT_PER_MONTH",
+                    "tháng",
+                    "month",
+                    "月"),
+            entry("UNIT_VND_PER_MONTH",
+                    "VNĐ/tháng",
+                    "VND/month",
+                    "ドン/月"),
+            entry("UNIT_WATER",
+                    "nước",
+                    "(water)",
+                    "（水道）"),
+
+            entry("UNIT_VND",
+                    "VNĐ",
+                    "VND",
+                    "ドン")
     );
 
     public static String boilerplate(String key, String langCode) {
@@ -336,9 +355,6 @@ public final class ContractI18n {
         return Map.entry(key, Map.of("vi", vi, "en", en, "ja", ja));
     }
 
-    // =========================================================================
-    // Enum → localized text
-    // =========================================================================
     public static String petPolicy(PetPolicy p, String lang) {
         if (p == null) return "";
         return switch (p) {
@@ -418,9 +434,28 @@ public final class ContractI18n {
         return g;
     }
 
-    // Words like "None" / "N/A" for missing optional data
     public static String notApplicable(String lang) {
         return pick(lang, "Không áp dụng", "N/A", "該当なし");
+    }
+
+    public static String payCycle(String cycle, String lang) {
+        if (cycle == null || cycle.isBlank()) return pick(lang, "Hàng tháng", "Monthly", "月次");
+        String key = cycle.trim().toLowerCase();
+        return switch (key) {
+            case "monthly"   -> pick(lang, "Hàng tháng",   "Monthly",   "月次");
+            case "quarterly" -> pick(lang, "Hàng quý",      "Quarterly", "四半期ごと");
+            case "annual", "yearly"
+                             -> pick(lang, "Hàng năm",      "Annually",  "年次");
+            default          -> cycle;
+        };
+    }
+
+    public static String visa(String visaType, String expiryIso, String lang) {
+        if (visaType == null || visaType.isBlank()) return "";
+        String label = visaType.trim();
+        if (expiryIso == null || expiryIso.isBlank()) return label;
+        String until = pick(lang, "hạn", "valid until", "有効期限");
+        return label + " — " + until + " " + expiryIso;
     }
 
     private static String pick(String lang, String vi, String en, String ja) {

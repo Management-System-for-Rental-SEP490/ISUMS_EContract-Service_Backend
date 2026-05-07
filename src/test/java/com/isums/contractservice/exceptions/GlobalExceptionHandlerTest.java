@@ -113,6 +113,6 @@ class GlobalExceptionHandlerTest {
         ResponseEntity<ApiResponse<Void>> res = handler.handleOcrValidation(
                 new OcrValidationException(OcrValidationException.ID_MISMATCH, "mismatch"));
         assertThat(res.getStatusCode().value()).isEqualTo(422);
-        assertThat(res.getBody().getErrors().get(0).getCode()).isEqualTo("OCR_VALIDATION_FAILED");
+        assertThat(res.getBody().getErrors().get(0).getCode()).isEqualTo(OcrValidationException.ID_MISMATCH);
     }
 }

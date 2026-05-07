@@ -1,6 +1,9 @@
 package com.isums.contractservice.domains.entities;
 
+import com.isums.common.i18n.TranslationMap;
+import com.isums.common.i18n.TranslationMapConverter;
 import com.isums.contractservice.domains.enums.ContractLanguage;
+import com.isums.contractservice.domains.enums.DepositStatus;
 import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.enums.PetPolicy;
 import com.isums.contractservice.domains.enums.SmokingPolicy;
@@ -31,8 +34,7 @@ import java.util.UUID;
         @Index(name = "idx_econtracts_user",          columnList = "user_id"),
         @Index(name = "idx_econtracts_end_at",        columnList = "end_at,status")
 })
-// Hide soft-deleted rows from every JPA query. One-off admin restore would
-// need a native query or a dedicated repository method outside JPA defaults.
+
 @SQLRestriction("deleted_at IS NULL")
 @Data
 @NoArgsConstructor
@@ -57,15 +59,16 @@ public class EContract implements Serializable {
 
     private String name;
 
+    @Column(name = "name_translations", columnDefinition = "text")
+    @Convert(converter = TranslationMapConverter.class)
+    private TranslationMap nameTranslations;
+
     @Column(name = "snapshot_key")
     private String snapshotKey;
 
     @Column(name = "house_id", nullable = false)
     private UUID houseId;
 
-    // Denormalized from houses.region_id at contract creation time.
-    // Used by role-scoped authz: MANAGER filter by managed regions,
-    // TECHNICAL_STAFF filter by region_staff assignments.
     @Column(name = "region_id")
     private UUID regionId;
 
@@ -80,6 +83,22 @@ public class EContract implements Serializable {
 
     @Column(name = "deposit_amount")
     private Long depositAmount;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "deposit_status", length = 40)
+    private DepositStatus depositStatus;
+
+    @Column(name = "deposit_due_at")
+    private Instant depositDueAt;
+
+    @Column(name = "relocation_source_contract_id")
+    private UUID relocationSourceContractId;
+
+    @Column(name = "replaced_by_contract_id")
+    private UUID replacedByContractId;
+
+    @Column(name = "transferred_deposit_amount")
+    private Long transferredDepositAmount;
 
     @Column(name = "pay_date")
     private Integer payDate;
@@ -96,9 +115,6 @@ public class EContract implements Serializable {
     @Column(name = "handover_date")
     private Instant handoverDate;
 
-    // ---------------------------------------------------------------------
-    // Tenant identity (CCCD for VN, passport for foreigner)
-    // ---------------------------------------------------------------------
     @Enumerated(EnumType.STRING)
     @Column(name = "tenant_type", length = 32)
     private TenantType tenantType;
@@ -136,9 +152,6 @@ public class EContract implements Serializable {
     @Column(name = "passport_verified_at")
     private Instant passportVerifiedAt;
 
-    // ---------------------------------------------------------------------
-    // Tenant personal info (required by Luật Cư trú 2020 for tạm trú)
-    // ---------------------------------------------------------------------
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
 
@@ -158,9 +171,6 @@ public class EContract implements Serializable {
     @Column(name = "detailed_address", columnDefinition = "jsonb")
     private Map<String, String> detailedAddress;
 
-    // ---------------------------------------------------------------------
-    // Rules & policies (nội quy ở)
-    // ---------------------------------------------------------------------
     @Enumerated(EnumType.STRING)
     @Column(name = "pet_policy", length = 32)
     private PetPolicy petPolicy;
@@ -177,9 +187,6 @@ public class EContract implements Serializable {
     @Column(name = "visitor_policy", length = 32)
     private VisitorPolicy visitorPolicy;
 
-    // ---------------------------------------------------------------------
-    // Legal responsibilities
-    // ---------------------------------------------------------------------
     @Enumerated(EnumType.STRING)
     @Column(name = "temp_residence_register_by", length = 32)
     private TempResidenceRegisterBy tempResidenceRegisterBy;
@@ -188,23 +195,14 @@ public class EContract implements Serializable {
     @Column(name = "tax_responsibility", length = 32)
     private TaxResponsibility taxResponsibility;
 
-    // ---------------------------------------------------------------------
-    // Handover snapshot: chỉ số điện/nước đầu kỳ (không tính tiền, chỉ ghi nhận)
-    // ---------------------------------------------------------------------
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "meter_readings_start", columnDefinition = "jsonb")
     private Map<String, Object> meterReadingsStart;
 
-    // ---------------------------------------------------------------------
-    // Language / translation
-    // ---------------------------------------------------------------------
     @Enumerated(EnumType.STRING)
     @Column(name = "contract_language", length = 16)
     private ContractLanguage contractLanguage;
 
-    // ---------------------------------------------------------------------
-    // Termination
-    // ---------------------------------------------------------------------
     @Column(name = "terminated_at")
     private Instant terminatedAt;
 
@@ -233,6 +231,9 @@ public class EContract implements Serializable {
     @Column(name = "created_by", nullable = false)
     private UUID createdBy;
 
+    @Column(name = "bookable_window_notified_at")
+    private Instant bookableWindowNotifiedAt;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -241,8 +242,6 @@ public class EContract implements Serializable {
     @Column(name = "updated_at")
     private Instant updatedAt;
 
-    // Soft-delete audit — keep contract row + linked PII-purged fields for
-    // legal retention (10 years per Law on Accounting/Contracts).
     @Column(name = "deleted_at")
     private Instant deletedAt;
 

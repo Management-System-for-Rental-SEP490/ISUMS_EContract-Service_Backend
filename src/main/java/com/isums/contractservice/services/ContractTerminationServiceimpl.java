@@ -70,7 +70,7 @@ public class ContractTerminationServiceimpl implements ContractTerminationServic
 
         if (contract.getStatus() != EContractStatus.IN_PROGRESS
                 && contract.getStatus() != EContractStatus.COMPLETED) {
-            throw new BusinessException("Hợp đồng không đang hoạt động");
+            throw new BusinessException("Contract is not active");
         }
 
         handleExpiredContract(contract);
@@ -106,3 +106,4 @@ public class ContractTerminationServiceimpl implements ContractTerminationServic
         }
     }
 }
+

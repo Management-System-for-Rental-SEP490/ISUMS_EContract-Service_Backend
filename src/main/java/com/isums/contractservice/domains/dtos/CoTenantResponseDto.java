@@ -19,7 +19,11 @@ public record CoTenantResponseDto(
         String nationality,
         String relationship,
         String phoneNumber,
+        String passportNumber,
+        String visaType,
+        java.time.LocalDate visaExpiryDate,
         Instant createdAt,
         Instant updatedAt
 ) {
 }
+

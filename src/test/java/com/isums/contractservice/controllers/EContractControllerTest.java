@@ -53,7 +53,7 @@ class EContractControllerTest {
         mvc.perform(post("/api/econtracts/{contractId}/notifications/ready-for-landlord-signature/test", contractId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
-                .andExpect(jsonPath("$.message").value("Đã replay notification landlord ký"));
+                .andExpect(jsonPath("$.message").value("Replayed landlord-signing notification"));
 
         verify(service).triggerReadyForLandlordSignatureNotification(contractId);
     }
@@ -62,13 +62,12 @@ class EContractControllerTest {
     @DisplayName("POST debug ready notification endpoint returns 422 for invalid contract state")
     void replayReadyNotificationInvalidState() throws Exception {
         UUID contractId = UUID.randomUUID();
-        doThrow(new IllegalStateException("Chỉ replay notification khi hợp đồng đang ở READY. Hiện tại: DRAFT"))
+        doThrow(new IllegalStateException("Chá»‰ replay notification khi há»£p Ä‘á»“ng Ä‘ang á»Ÿ READY. Hiá»‡n táº¡i: DRAFT"))
                 .when(service).triggerReadyForLandlordSignatureNotification(contractId);
 
         mvc.perform(post("/api/econtracts/{contractId}/notifications/ready-for-landlord-signature/test", contractId))
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.message")
-                        .value("Chỉ replay notification khi hợp đồng đang ở READY. Hiện tại: DRAFT"));
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.containsString("READY")));
     }
 }

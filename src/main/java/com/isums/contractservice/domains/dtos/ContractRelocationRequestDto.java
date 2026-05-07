@@ -1,0 +1,66 @@
+package com.isums.contractservice.domains.dtos;
+
+import com.isums.contractservice.domains.enums.DepositHandling;
+import com.isums.contractservice.domains.enums.DepositStatus;
+import com.isums.contractservice.domains.enums.RelocationFaultParty;
+import com.isums.contractservice.domains.enums.RelocationRequestKind;
+import com.isums.contractservice.domains.enums.RelocationRequestStatus;
+import com.isums.contractservice.domains.enums.RelocationResolutionType;
+
+import java.time.Instant;
+import java.util.UUID;
+
+public record ContractRelocationRequestDto(
+        UUID id,
+        UUID oldContractId,
+        String oldContractNumber,
+        UUID tenantId,
+        UUID oldHouseId,
+        UUID requestedHouseId,
+        UUID approvedHouseId,
+        UUID newContractId,
+        String newContractNumber,
+        RelocationRequestStatus status,
+        RelocationRequestKind requestKind,
+        RelocationFaultParty faultParty,
+        RelocationResolutionType resolutionType,
+        DepositStatus depositStatusSnapshot,
+        DepositHandling depositHandling,
+        Long depositAmount,
+        Long transferredDepositAmount,
+        Long forfeitAmount,
+        Long additionalDepositAmount,
+        Long refundAmount,
+        Instant refundDueAt,
+        Long newRentAmount,
+        Long newDepositAmount,
+        Instant newStartAt,
+        Instant newEndAt,
+        Instant newHandoverDate,
+        Instant desiredMoveDate,
+        Integer occupantCount,
+        Long oldRentProratedAmount,
+        Long oldUtilitiesAmount,
+        Long oldDamageAmount,
+        Long adminFeeAmount,
+        Long settlementAmount,
+        Long refundableDepositAmount,
+        Long totalAdditionalPaymentAmount,
+        String inspectionNote,
+        String tenantReason,
+        String staffReportReason,
+        String staffEvidence,
+        String legalBasis,
+        String managerNote,
+        UUID requestedBy,
+        UUID staffReportedBy,
+        UUID reviewedBy,
+        Instant requestedAt,
+        Instant staffReportedAt,
+        Instant reviewedAt,
+        Instant contractCreatedAt,
+        Instant tenantAcceptedAt,
+        Instant completedAt,
+        Instant createdAt,
+        Instant updatedAt
+) {}

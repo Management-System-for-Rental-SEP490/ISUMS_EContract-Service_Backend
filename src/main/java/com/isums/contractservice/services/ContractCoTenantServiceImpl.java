@@ -51,7 +51,7 @@ public class ContractCoTenantServiceImpl implements ContractCoTenantService {
         ContractCoTenant existing = repo.findById(coTenantId)
                 .orElseThrow(() -> new NotFoundException("Co-tenant not found: " + coTenantId));
         if (!existing.getContractId().equals(contractId)) {
-            throw new NotFoundException("Co-tenant " + coTenantId + " không thuộc contract " + contractId);
+            throw new NotFoundException("Co-tenant " + coTenantId + " does not belong to contract " + contractId);
         }
         existing.setFullName(req.fullName());
         existing.setIdentityNumber(req.identityNumber());
@@ -73,7 +73,7 @@ public class ContractCoTenantServiceImpl implements ContractCoTenantService {
         ContractCoTenant existing = repo.findById(coTenantId)
                 .orElseThrow(() -> new NotFoundException("Co-tenant not found: " + coTenantId));
         if (!existing.getContractId().equals(contractId)) {
-            throw new NotFoundException("Co-tenant " + coTenantId + " không thuộc contract " + contractId);
+            throw new NotFoundException("Co-tenant " + coTenantId + " does not belong to contract " + contractId);
         }
         repo.delete(existing);
         log.info("[CoTenant] deleted coTenantId={}", coTenantId);
@@ -137,3 +137,4 @@ public class ContractCoTenantServiceImpl implements ContractCoTenantService {
                 .build();
     }
 }
+

@@ -13,6 +13,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public interface EContractRepository extends JpaRepository<EContract, UUID>, JpaSpecificationExecutor<EContract> {
@@ -20,6 +21,10 @@ public interface EContractRepository extends JpaRepository<EContract, UUID>, Jpa
     Optional<EContract> findByDocumentId(String documentId);
 
     Optional<EContract> findByDocumentNo(String documentNo);
+
+    Optional<EContract> findByDocumentIdIgnoreCase(String documentId);
+
+    Optional<EContract> findByDocumentNoIgnoreCase(String documentNo);
 
     List<EContract> findAllByOrderByCreatedAtAsc();
 
@@ -34,6 +39,15 @@ public interface EContractRepository extends JpaRepository<EContract, UUID>, Jpa
     List<EContract> findByStatusAndEndAtBetween(EContractStatus status, Instant from, Instant to);
 
     List<EContract> findByStatusInAndEndAtBefore(List<EContractStatus> statuses, Instant endAt);
+
+    @Query("""
+            SELECT e FROM EContract e
+            WHERE e.status = com.isums.contractservice.domains.enums.EContractStatus.COMPLETED
+              AND e.depositStatus = com.isums.contractservice.domains.enums.DepositStatus.UNPAID
+              AND e.depositDueAt IS NOT NULL
+              AND e.depositDueAt < :cutoff
+            """)
+    List<EContract> findExpiredDepositContracts(Instant cutoff);
 
     List<EContract> findByStatusInAndEndAtBetween(List<EContractStatus> statuses, Instant from, Instant to);
 
@@ -98,6 +112,23 @@ public interface EContractRepository extends JpaRepository<EContract, UUID>, Jpa
 
     @Query("SELECT e.status, COUNT(e) FROM EContract e WHERE e.houseId IN :houseIds GROUP BY e.status")
     List<Object[]> countByStatusGroupedByHouseIds(@Param("houseIds") List<UUID> houseIds);
+
+    @Query("""
+            SELECT DISTINCT e.houseId FROM EContract e
+            WHERE e.status IN :statuses
+            """)
+    Set<UUID> findHouseIdsByStatusIn(@Param("statuses") List<EContractStatus> statuses);
+
+    @Query("""
+            SELECT e FROM EContract e
+            WHERE e.status = :status
+              AND e.endAt BETWEEN :from AND :to
+              AND e.bookableWindowNotifiedAt IS NULL
+            """)
+    List<EContract> findUnnotifiedBookableWindowContracts(
+            @Param("status") EContractStatus status,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
 
     @Query(value = """
             SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,

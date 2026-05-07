@@ -22,4 +22,19 @@ public class CreateUserPlacedEvent {
     private String phoneNumber;
     private String identityNumber;
     private Boolean isEnabled;
+
+    private String dateOfIssue;
+    private String placeOfIssue;
+    private String permanentAddress;
+
+    private String dateOfBirth;
+    private String gender;
+
+    private String passportNumber;
+    private String passportIssueDate;
+    private String passportExpiryDate;
+    private String nationality;
+    private String visaType;
+    private String visaExpiryDate;
 }
+

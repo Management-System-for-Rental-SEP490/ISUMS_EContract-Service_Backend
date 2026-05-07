@@ -1,6 +1,10 @@
 package com.isums.contractservice.domains.dtos;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+
+import java.time.LocalDate;
 
 public record UpsertLandlordProfileRequest(
         @NotBlank String fullName,
@@ -10,6 +14,12 @@ public record UpsertLandlordProfileRequest(
         String address,
         String phoneNumber,
         @NotBlank String email,
-        String bankAccount
+        String bankAccount,
+        LocalDate dateOfBirth,
+        String permanentAddress,
+        String bankName,
+        String taxCode,
+        @Min(1) @Max(30) Integer depositWaitDays,
+        @Min(1) @Max(168) Integer forceMajeureNoticeHours
 ) {
 }

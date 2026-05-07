@@ -38,6 +38,8 @@ public class LandlordProfileSeeder implements CommandLineRunner {
                 .phoneNumber("0326336224")
                 .email("hoangtuzami@gmail.com")
                 .bankAccount("0326336224 (TPBank)")
+                .depositWaitDays(3)
+                .forceMajeureNoticeHours(24)
                 .build();
 
         landlordProfileRepository.save(profile);

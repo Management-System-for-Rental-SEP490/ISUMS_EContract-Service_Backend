@@ -27,6 +27,8 @@ public interface EContractService {
 
     String getPdfPresignedUrl(UUID contractId, String contractToken);
 
+    TenantMetaDto getTenantMeta(UUID contractId, String contractToken);
+
     VnptDocumentDto tenantConfirmWithCccd(UUID contractId, MultipartFile frontImage, MultipartFile backImage, String contractToken);
 
     VnptDocumentDto tenantConfirmWithPassport(UUID contractId, MultipartFile passportImage, String contractToken);
@@ -34,6 +36,8 @@ public interface EContractService {
     boolean hasPassport(UUID contractId);
 
     void triggerReadyForLandlordSignatureNotification(UUID contractId);
+
+    void resendTenantSignatureNotification(UUID contractId);
 
     ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode);
 

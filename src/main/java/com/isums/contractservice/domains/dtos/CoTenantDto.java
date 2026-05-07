@@ -15,7 +15,7 @@ public record CoTenantDto(
 
         @NotBlank
         @Pattern(regexp = "^[A-Z0-9]{6,20}$",
-                message = "Số giấy tờ không hợp lệ — chấp nhận 6–20 ký tự chữ và số")
+                message = "Invalid identity number — accepts 6–20 alphanumeric characters")
         String identityNumber,
 
         @NotNull CoTenantIdentityType identityType,
@@ -27,7 +27,12 @@ public record CoTenantDto(
         @NotBlank String relationship,
 
         @Nullable
-        @Pattern(regexp = "^\\+?[0-9]{9,15}$", message = "Số điện thoại không hợp lệ")
-        String phoneNumber
+        @Pattern(regexp = "^\\+?[0-9]{9,15}$", message = "Invalid phone number")
+        String phoneNumber,
+
+        @Nullable String passportNumber,
+        @Nullable String visaType,
+        @Nullable LocalDate visaExpiryDate
 ) {
 }
+

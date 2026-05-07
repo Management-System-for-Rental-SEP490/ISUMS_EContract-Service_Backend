@@ -5,6 +5,7 @@ import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.events.*;
 import com.isums.contractservice.infrastructures.grpcs.UserGrpcClient;
 import com.isums.contractservice.infrastructures.repositories.EContractRepository;
+import com.isums.contractservice.infrastructures.repositories.ContractRelocationRequestRepository;
 import com.isums.userservice.grpc.UserResponse;
 import common.kafkas.IdempotencyService;
 import common.kafkas.KafkaListenerHelper;
@@ -39,6 +40,7 @@ import static org.mockito.Mockito.when;
 class PaymentEventListenersTest {
 
     @Mock private EContractRepository contractRepo;
+    @Mock private ContractRelocationRequestRepository relocationRepo;
     @Mock private KafkaTemplate<String, Object> kafka;
     @Mock private ObjectMapper objectMapper;
     @Mock private IdempotencyService idempotencyService;

@@ -3,7 +3,12 @@
     <meta charset="utf-8"/>
     <title>HỢP ĐỒNG THUÊ NHÀ Ở SONG NGỮ</title>
     <style>
-        body { font-family: "Times New Roman", serif; line-height: 1.4; font-size: 12.5px; }
+        /* Font stack: SVN Times first (Latin + VN tone marks), then Noto
+           Sans JP for CJK fallback. openhtmltopdf walks the stack
+           per-glyph, so a Vietnamese contract with a Japanese translation
+           column renders both scripts correctly. Without Noto Sans JP
+           the JP side rendered as `#` tofu. */
+        body { font-family: "Times New Roman", "Noto Sans JP", serif; line-height: 1.4; font-size: 12.5px; }
         h1,h2 { text-align: center; margin: 4px 0; }
         .center { text-align: center; }
         .right  { text-align: right; }
@@ -30,7 +35,14 @@
         <td>
             <h1>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</h1>
             <div class="center"><b>Độc lập – Tự do – Hạnh phúc</b></div>
-            <div class="right">…, ngày {{EFFECTIVE_DATE.vi}}</div>
+            <!--
+              EFFECTIVE_DATE.vi already contains "TP.HCM, ngày 22/04/2026" —
+              the full city+date pair assembled in ContractHtmlBuilder. The
+              stray "…, ngày " prefix was a legacy carry-over from a time
+              when the placeholder was just a date; it rendered as
+              "…, ngày TP.HCM, ngày 22/04/2026" which reads ungrammatically.
+            -->
+            <div class="right">{{EFFECTIVE_DATE.vi}}</div>
             <h2>HỢP ĐỒNG THUÊ NHÀ Ở</h2>
             <div class="center small">Số: {{DOCUMENT_NO.vi}}</div>
         </td>
@@ -45,9 +57,22 @@
     </tbody>
 </table>
 
-<div class="legal-note">
-    {{PREVAILING_LANGUAGE_CLAUSE.vi}} &nbsp;|&nbsp; {{PREVAILING_LANGUAGE_CLAUSE.xx}}
-</div>
+<!--
+  Bilingual disclaimer — rendered as a 2-col table (same `.layout` grid
+  as every other bilingual row) so the VI text stays left-of-divider and
+  the JA/EN text stays right-of-divider. The previous single-line format
+  with a `|` separator looked misaligned whenever the two strings had
+  noticeably different widths (VI "Bản tiếng Việt có giá trị pháp lý…"
+  is ~64 chars; JA "両言語間に相違がある場合…" is ~25 visual columns).
+-->
+<table class="layout legal-note">
+    <tbody>
+    <tr>
+        <td>{{PREVAILING_LANGUAGE_CLAUSE.vi}}</td>
+        <td>{{PREVAILING_LANGUAGE_CLAUSE.xx}}</td>
+    </tr>
+    </tbody>
+</table>
 
 <!-- CĂN CỨ PHÁP LÝ -->
 <table class="layout">
@@ -86,13 +111,13 @@
             <table class="party">
                 <tbody>
                 <tr><td>Họ và tên:</td><td><b>{{LANDLORD_NAME}}</b></td></tr>
-                <tr><td>Ngày sinh:</td><td>{{LANDLORD_DOB}}</td></tr>
+                <tr><td>Ngày sinh:</td><td>{{LANDLORD_DOB.vi}}</td></tr>
                 <tr><td>CCCD/CMND:</td><td>{{LANDLORD_ID}}</td></tr>
-                <tr><td>Ngày cấp / Nơi cấp:</td><td>{{LANDLORD_ID_ISSUE}}</td></tr>
+                <tr><td>Ngày cấp / Nơi cấp:</td><td>{{LANDLORD_ID_ISSUE.vi}}</td></tr>
                 <tr><td>Địa chỉ thường trú:</td><td>{{LANDLORD_PERMANENT_ADDRESS}}</td></tr>
                 <tr><td>Điện thoại / Email:</td><td>{{LANDLORD_PHONE}} / {{LANDLORD_EMAIL}}</td></tr>
-                <tr><td>MST:</td><td>{{LANDLORD_TAX_CODE}}</td></tr>
-                <tr><td>Tài khoản:</td><td>{{LANDLORD_BANK}} — {{LANDLORD_BANK_NAME}}</td></tr>
+                {{LANDLORD_TAX_CODE_ROW.vi}}
+                <tr><td>Tài khoản:</td><td>{{LANDLORD_BANK_LINE.vi}}</td></tr>
                 </tbody>
             </table>
         </td>
@@ -101,13 +126,13 @@
             <table class="party">
                 <tbody>
                 <tr><td>{{LABEL_FULL_NAME.xx}}</td><td><b>{{LANDLORD_NAME}}</b></td></tr>
-                <tr><td>{{LABEL_DOB.xx}}</td><td>{{LANDLORD_DOB}}</td></tr>
+                <tr><td>{{LABEL_DOB.xx}}</td><td>{{LANDLORD_DOB.xx}}</td></tr>
                 <tr><td>{{LABEL_ID.xx}}</td><td>{{LANDLORD_ID}}</td></tr>
-                <tr><td>{{LABEL_ID_ISSUE.xx}}</td><td>{{LANDLORD_ID_ISSUE}}</td></tr>
+                <tr><td>{{LABEL_ID_ISSUE.xx}}</td><td>{{LANDLORD_ID_ISSUE.xx}}</td></tr>
                 <tr><td>{{LABEL_PERM_ADDRESS.xx}}</td><td>{{LANDLORD_PERMANENT_ADDRESS}}</td></tr>
                 <tr><td>{{LABEL_PHONE_EMAIL.xx}}</td><td>{{LANDLORD_PHONE}} / {{LANDLORD_EMAIL}}</td></tr>
-                <tr><td>{{LABEL_TAX_CODE.xx}}</td><td>{{LANDLORD_TAX_CODE}}</td></tr>
-                <tr><td>{{LABEL_BANK.xx}}</td><td>{{LANDLORD_BANK}} — {{LANDLORD_BANK_NAME}}</td></tr>
+                {{LANDLORD_TAX_CODE_ROW.xx}}
+                <tr><td>{{LABEL_BANK.xx}}</td><td>{{LANDLORD_BANK_LINE.xx}}</td></tr>
                 </tbody>
             </table>
         </td>
@@ -127,12 +152,14 @@
                 <tr><td>Loại giấy tờ:</td><td>{{TENANT_IDENTITY_KIND.vi}}</td></tr>
                 <tr><td>Số giấy tờ:</td><td>{{TENANT_ID}}</td></tr>
                 <tr><td>Ngày cấp / Nơi cấp:</td><td>{{TENANT_ID_ISSUE}}</td></tr>
-                <tr><td>Ngày sinh / Giới tính:</td><td>{{TENANT_DOB}} / {{TENANT_GENDER.vi}}</td></tr>
+                <tr><td>Ngày sinh / Giới tính:</td><td>{{TENANT_DOB.vi}} / {{TENANT_GENDER.vi}}</td></tr>
                 <tr><td>Quốc tịch:</td><td>{{TENANT_NATIONALITY}}</td></tr>
-                <tr><td>Nghề nghiệp:</td><td>{{TENANT_OCCUPATION.vi}}</td></tr>
+                <!-- Nghề nghiệp (occupation) removed per product decision
+                     2026-04: not captured by the lease wizard and rarely
+                     relevant to the contract's legal enforceability. -->
                 <tr><td>Địa chỉ thường trú:</td><td>{{TENANT_PERMANENT_ADDRESS.vi}}</td></tr>
                 <tr><td>Điện thoại / Email:</td><td>{{TENANT_PHONE}} / {{TENANT_EMAIL}}</td></tr>
-                <tr><td>Thị thực:</td><td>{{TENANT_VISA}}</td></tr>
+                <tr><td>Thị thực:</td><td>{{TENANT_VISA.vi}}</td></tr>
                 </tbody>
             </table>
         </td>
@@ -144,12 +171,12 @@
                 <tr><td>{{LABEL_IDENTITY_KIND.xx}}</td><td>{{TENANT_IDENTITY_KIND.xx}}</td></tr>
                 <tr><td>{{LABEL_ID.xx}}</td><td>{{TENANT_ID}}</td></tr>
                 <tr><td>{{LABEL_ID_ISSUE.xx}}</td><td>{{TENANT_ID_ISSUE}}</td></tr>
-                <tr><td>{{LABEL_DOB_GENDER.xx}}</td><td>{{TENANT_DOB}} / {{TENANT_GENDER.xx}}</td></tr>
+                <tr><td>{{LABEL_DOB_GENDER.xx}}</td><td>{{TENANT_DOB.xx}} / {{TENANT_GENDER.xx}}</td></tr>
                 <tr><td>{{LABEL_NATIONALITY.xx}}</td><td>{{TENANT_NATIONALITY}}</td></tr>
-                <tr><td>{{LABEL_OCCUPATION.xx}}</td><td>{{TENANT_OCCUPATION.xx}}</td></tr>
+                <!-- Nghề nghiệp (occupation) removed — mirror VI side. -->
                 <tr><td>{{LABEL_PERM_ADDRESS.xx}}</td><td>{{TENANT_PERMANENT_ADDRESS.xx}}</td></tr>
                 <tr><td>{{LABEL_PHONE_EMAIL.xx}}</td><td>{{TENANT_PHONE}} / {{TENANT_EMAIL}}</td></tr>
-                <tr><td>{{LABEL_VISA.xx}}</td><td>{{TENANT_VISA}}</td></tr>
+                <tr><td>{{LABEL_VISA.xx}}</td><td>{{TENANT_VISA.xx}}</td></tr>
                 </tbody>
             </table>
         </td>
@@ -183,12 +210,12 @@
     <tbody><tr>
     <td>
         <div class="clause-title">Điều 2. Thời hạn thuê</div>
-        <p>Từ ngày <b>{{START_DATE}}</b> đến hết ngày <b>{{END_DATE}}</b>.
+        <p>Từ ngày <b>{{START_DATE.vi}}</b> đến hết ngày <b>{{END_DATE.vi}}</b>.
             Gia hạn phải được lập thành văn bản trước {{RENEW_NOTICE_DAYS}} ngày.</p>
     </td>
     <td>
         <div class="clause-title">{{ART_2_TITLE.xx}}</div>
-        <p>{{ART_2_FROM.xx}} <b>{{START_DATE}}</b> {{ART_2_TO.xx}} <b>{{END_DATE}}</b>.
+        <p>{{ART_2_FROM.xx}} <b>{{START_DATE.xx}}</b> {{ART_2_TO.xx}} <b>{{END_DATE.xx}}</b>.
             {{ART_2_RENEWAL.xx}} {{RENEW_NOTICE_DAYS}} {{ART_2_DAYS.xx}}.</p>
     </td>
     </tr></tbody>
@@ -199,7 +226,7 @@
     <tbody><tr>
     <td>
         <div class="clause-title">Điều 3. Giá thuê và thanh toán</div>
-        <p>Giá thuê: <b>{{RENT_AMOUNT}}</b> VNĐ/tháng
+        <p>Giá thuê: <b>{{RENT_AMOUNT_FMT}}</b> VNĐ/tháng
             (<i>{{RENT_TEXT.vi}}</i>). Thuế/phí: {{TAX_FEE_NOTE.vi}}.
             Trách nhiệm thuế TNCN: {{TAX_RESPONSIBILITY.vi}}.</p>
         <p>Kỳ: {{PAY_CYCLE.vi}}; ngày {{PAY_DAY}} hằng kỳ; chuyển khoản.
@@ -207,11 +234,11 @@
     </td>
     <td>
         <div class="clause-title">{{ART_3_TITLE.xx}}</div>
-        <p>{{ART_3_RENT.xx}} <b>{{RENT_AMOUNT}}</b> VND/month
+        <p>{{ART_3_RENT.xx}} <b>{{RENT_AMOUNT_FMT}}</b> {{UNIT_VND_PER_MONTH.xx}}
             (<i>{{RENT_TEXT.xx}}</i>). {{ART_3_TAX.xx}} {{TAX_FEE_NOTE.xx}}.
             {{ART_3_TAX_RESP.xx}} {{TAX_RESPONSIBILITY.xx}}.</p>
         <p>{{ART_3_CYCLE.xx}} {{PAY_CYCLE.xx}}; {{ART_3_PAY_DAY.xx}} {{PAY_DAY}}.
-            {{ART_3_LATE.xx}} {{LATE_DAYS}} {{ART_3_DAYS.xx}} — {{LATE_PENALTY}}%/month.</p>
+            {{ART_3_LATE.xx}} {{LATE_DAYS}} {{ART_3_DAYS.xx}} — {{LATE_PENALTY}}%/{{UNIT_PER_MONTH.xx}}.</p>
     </td>
     </tr></tbody>
 </table>
@@ -221,12 +248,12 @@
     <tbody><tr>
     <td>
         <div class="clause-title">Điều 4. Đặt cọc</div>
-        <p>Đặt cọc <b>{{DEPOSIT_AMOUNT}}</b> VNĐ, nộp ngày {{DEPOSIT_DATE}}.
+        <p>Đặt cọc <b>{{DEPOSIT_AMOUNT_FMT}}</b> VNĐ (<i>{{DEPOSIT_TEXT.vi}}</i>), nộp ngày {{DEPOSIT_DATE.vi}}.
             Hoàn cọc trong {{DEPOSIT_REFUND_DAYS}} ngày sau thanh lý.</p>
     </td>
     <td>
         <div class="clause-title">{{ART_4_TITLE.xx}}</div>
-        <p>{{ART_4_AMOUNT.xx}} <b>{{DEPOSIT_AMOUNT}}</b> VND, {{ART_4_PAID_ON.xx}} {{DEPOSIT_DATE}}.
+        <p>{{ART_4_AMOUNT.xx}} <b>{{DEPOSIT_AMOUNT_FMT}}</b> {{UNIT_VND.xx}} (<i>{{DEPOSIT_TEXT.xx}}</i>), {{ART_4_PAID_ON.xx}} {{DEPOSIT_DATE.xx}}.
             {{ART_4_REFUND.xx}} {{DEPOSIT_REFUND_DAYS}} {{ART_4_DAYS.xx}}.</p>
     </td>
     </tr></tbody>
@@ -237,14 +264,14 @@
     <tbody><tr>
     <td>
         <div class="clause-title">Điều 5. Bàn giao</div>
-        <p>Bên A bàn giao Nhà thuê vào ngày {{HANDOVER_DATE}}.
+        <p>Bên A bàn giao Nhà thuê vào ngày {{HANDOVER_DATE.vi}}.
             Chỉ số công tơ đầu kỳ (chỉ để ghi nhận): điện {{METER_ELECTRIC}} kWh;
             nước {{METER_WATER}} m³. {{METER_NOTE.vi}}</p>
     </td>
     <td>
         <div class="clause-title">{{ART_5_TITLE.xx}}</div>
-        <p>{{ART_5_HANDOVER.xx}} {{HANDOVER_DATE}}.
-            {{ART_5_METER.xx}} {{METER_ELECTRIC}} kWh; {{METER_WATER}} m³ (water). {{METER_NOTE.xx}}</p>
+        <p>{{ART_5_HANDOVER.xx}} {{HANDOVER_DATE.xx}}.
+            {{ART_5_METER.xx}} {{METER_ELECTRIC}} kWh; {{METER_WATER}} m³ {{UNIT_WATER.xx}}. {{METER_NOTE.xx}}</p>
     </td>
     </tr></tbody>
 </table>
@@ -353,6 +380,8 @@
         </ul>
         <p>Lỗi Bên B: {{EARLY_TERMINATION_PENALTY.vi}}.
             Lỗi Bên A: {{LANDLORD_BREACH_COMPENSATION.vi}}.</p>
+        <p><b>{{ART_10_UNINHABITABLE_TITLE.vi}}</b> {{ART_10_UNINHABITABLE_BODY.vi}}</p>
+        <p><b>{{ART_10_RELOCATION_REQUEST_TITLE.vi}}</b> {{ART_10_RELOCATION_REQUEST_BODY.vi}}</p>
     </td>
     <td>
         <div class="clause-title">{{ART_10_TITLE.xx}}</div>
@@ -364,6 +393,8 @@
         </ul>
         <p>{{ART_10_B_FAULT.xx}} {{EARLY_TERMINATION_PENALTY.xx}}.
             {{ART_10_A_FAULT.xx}} {{LANDLORD_BREACH_COMPENSATION.xx}}.</p>
+        <p><b>{{ART_10_UNINHABITABLE_TITLE.xx}}</b> {{ART_10_UNINHABITABLE_BODY.xx}}</p>
+        <p><b>{{ART_10_RELOCATION_REQUEST_TITLE.xx}}</b> {{ART_10_RELOCATION_REQUEST_BODY.xx}}</p>
     </td>
     </tr></tbody>
 </table>
@@ -426,12 +457,14 @@
 <table class="layout">
     <tbody><tr>
     <td class="center">
-        <b>ĐẠI DIỆN BÊN A</b><br/>(Ký, ghi rõ họ tên)
+        <b>{{SIGN_A_LABEL.vi}}</b><br/><i>{{SIGN_SUBTITLE.vi}}</i>
+        <br/><b>{{SIGN_A_LABEL.xx}}</b><br/><i>{{SIGN_SUBTITLE.xx}}</i>
         <br/><br/><br/><br/>
         <span style="color:white;font-size:1px;">SIGN_A</span>
     </td>
     <td class="center">
-        <b>ĐẠI DIỆN BÊN B</b><br/>(Ký, ghi rõ họ tên)
+        <b>{{SIGN_B_LABEL.vi}}</b><br/><i>{{SIGN_SUBTITLE.vi}}</i>
+        <br/><b>{{SIGN_B_LABEL.xx}}</b><br/><i>{{SIGN_SUBTITLE.xx}}</i>
         <br/><br/><br/><br/>
         <span style="color:white;font-size:1px;">SIGN_B</span>
     </td>
@@ -440,3 +473,4 @@
 
 </body>
 </html>
+

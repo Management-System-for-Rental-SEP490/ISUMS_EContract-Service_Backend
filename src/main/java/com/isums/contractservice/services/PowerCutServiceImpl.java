@@ -32,11 +32,11 @@ public class PowerCutServiceImpl implements PowerCutService {
 
         if (contract.getStatus() != EContractStatus.IN_PROGRESS
                 && contract.getStatus() != EContractStatus.COMPLETED) {
-            throw new BusinessException("Hợp đồng không đang hoạt động");
+            throw new BusinessException("Contract is not active");
         }
 
         if (!Boolean.TRUE.equals(contract.getHasPowerCutClause())) {
-            throw new BusinessException("Hợp đồng này không có điều khoản cắt điện");
+            throw new BusinessException("This contract has no power-cut clause");
         }
 
         kafka.send("contract.power-cut-confirmed",

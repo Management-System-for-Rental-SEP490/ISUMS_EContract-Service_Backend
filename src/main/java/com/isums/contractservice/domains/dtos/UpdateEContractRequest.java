@@ -16,21 +16,10 @@ import org.jspecify.annotations.Nullable;
 import java.time.Instant;
 import java.time.LocalDate;
 
-/**
- * Partial-update contract DTO used when the contract is in CORRECTING state.
- * All fields nullable — only non-null fields are applied (MapStruct
- * {@code NullValuePropertyMappingStrategy.IGNORE}).
- *
- * Immutable fields after draft (not in this DTO by design):
- * - houseId, userId, createdBy, status (state machine only)
- * - startDate, endDate (contract period is contractual, use renewal flow instead)
- * - tenantType (changing from VN→foreign mid-correction would break identity docs already uploaded)
- */
 public record UpdateEContractRequest(
         @Nullable String html,
         @Nullable String name,
 
-        // Money (landlord may correct after tenant pushback)
         @Nullable @Min(0) Long rentAmount,
         @Nullable @Min(0) Long depositAmount,
         @Nullable @Min(1) @Max(31) Integer payDate,
@@ -40,10 +29,9 @@ public record UpdateEContractRequest(
         @Nullable @Min(0) Integer renewNoticeDays,
         @Nullable Instant handoverDate,
 
-        // Tenant personal (typos, missing fields)
         @Nullable String tenantName,
         @Nullable
-        @Pattern(regexp = "^\\d{12}$", message = "CCCD phải có đúng 12 chữ số")
+        @Pattern(regexp = "^\\d{12}$", message = "Citizen ID must have exactly 12 digits")
         String cccdNumber,
         @Nullable LocalDate dateOfBirth,
         @Nullable String gender,
@@ -51,9 +39,8 @@ public record UpdateEContractRequest(
         @Nullable String permanentAddress,
         @Nullable @Valid DetailedAddressDto detailedAddress,
 
-        // Passport + visa
         @Nullable
-        @Pattern(regexp = "^[A-Z0-9]{6,9}$", message = "Số hộ chiếu không đúng định dạng ICAO")
+        @Pattern(regexp = "^[A-Z0-9]{6,9}$", message = "Passport number does not match ICAO format")
         String passportNumber,
         @Nullable LocalDate passportIssueDate,
         @Nullable String passportIssuePlace,
@@ -62,8 +49,6 @@ public record UpdateEContractRequest(
         @Nullable LocalDate visaExpiryDate,
         @Nullable String nationality,
 
-        // House legal
-        // Rules
         @Nullable PetPolicy petPolicy,
         @Nullable SmokingPolicy smokingPolicy,
         @Nullable SubleasePolicy subleasePolicy,
@@ -71,13 +56,11 @@ public record UpdateEContractRequest(
         @Nullable TempResidenceRegisterBy tempResidenceRegisterBy,
         @Nullable TaxResponsibility taxResponsibility,
 
-        // Handover meters
         @Nullable @Valid MeterReadingsDto meterReadingsStart,
 
-        // Language (landlord may flip to bilingual after draft)
         @Nullable ContractLanguage contractLanguage,
 
-        // Flags
         @Nullable Boolean hasPowerCutClause
 ) {
 }
+

@@ -37,21 +37,21 @@ public class ContractTokenService {
 
     public void validateToken(String token, UUID contractId) {
         if (token == null || token.isBlank())
-            throw new IllegalArgumentException("Token không được để trống.");
+            throw new IllegalArgumentException("Token must not be blank.");
 
         String value = redis.opsForValue().get(PREFIX + token);
         if (value == null)
-            throw new IllegalArgumentException("Token không hợp lệ hoặc đã hết hạn.");
+            throw new IllegalArgumentException("Token is invalid or has expired.");
 
         String[] parts = value.split(":");
         if (parts.length != 2)
-            throw new IllegalArgumentException("Token bị hỏng.");
+            throw new IllegalArgumentException("Token is malformed.");
 
         UUID tokenContractId = UUID.fromString(parts[0]);
         UUID tenantUserId    = UUID.fromString(parts[1]);
 
         if (!tokenContractId.equals(contractId))
-            throw new IllegalArgumentException("Token không khớp với hợp đồng.");
+            throw new IllegalArgumentException("Token does not match the contract.");
 
     }
 

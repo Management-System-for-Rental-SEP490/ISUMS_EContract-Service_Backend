@@ -56,7 +56,10 @@ class ContractCoTenantServiceImplTest {
                 "M",
                 "VN",
                 "Anh trai",
-                "0901234567"
+                "0901234567",
+                null,
+                null,
+                null
         );
     }
 
@@ -164,7 +167,7 @@ class ContractCoTenantServiceImplTest {
                     .thenReturn(Optional.of(entity(coTenantId, otherContract, "X")));
             assertThatThrownBy(() -> service.update(contractId, coTenantId, sampleDto()))
                     .isInstanceOf(NotFoundException.class)
-                    .hasMessageContaining("không thuộc contract");
+                    .hasMessageContaining("does not belong to contract");
         }
 
         @Test

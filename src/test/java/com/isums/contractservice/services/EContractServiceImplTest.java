@@ -54,7 +54,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-@DisplayName("EContractServiceImpl (subset — large service)")
+@DisplayName("EContractServiceImpl (subset â€” large service)")
 class EContractServiceImplTest {
 
     @Mock private VnptEContractClient vnptClient;
@@ -97,7 +97,7 @@ class EContractServiceImplTest {
         houseId = UUID.randomUUID();
         actorId = UUID.randomUUID();
 
-        // LANDLORD scope bypasses region/ownership filtering — the default
+        // LANDLORD scope bypasses region/ownership filtering â€” the default
         // for this test class which pre-dates role-aware authz.
         lenient().when(landlordAuth.getName()).thenReturn(actorId.toString());
         org.springframework.security.core.GrantedAuthority landlordRole =
@@ -117,9 +117,9 @@ class EContractServiceImplTest {
     }
 
     /**
-     * UpdateEContractRequest has 36 nullable fields after V6 cleanup
-     * (usableAreaM2 dropped — pulled from House gRPC). Tests here only
-     * care about html; helper fills the rest with null.
+     * UpdateEContractRequest has 33 nullable fields after V6+V7 cleanup
+     * (usableAreaM2 + landCert_* dropped â€” pulled from House gRPC). Tests
+     * here only care about html; helper fills the rest with null.
      */
     private UpdateEContractRequest updateWithHtml(String html) {
         return new UpdateEContractRequest(
@@ -127,41 +127,70 @@ class EContractServiceImplTest {
                 null, null, null, null, null, null, null, null,       // 3-10: money + dates
                 null, null, null, null, null, null, null,             // 11-17: tenant personal + detailedAddress
                 null, null, null, null, null, null, null,             // 18-24: passport + visa + nationality
-                null, null, null,                                     // 25-27: land cert (3: number/date/issuer)
-                null, null, null, null, null, null,                   // 28-33: rules
-                null, null, null                                      // 34-36: meter, lang, powerCut
+                null, null, null, null, null, null,                   // 25-30: rules
+                null, null, null                                      // 31-33: meter, lang, powerCut
         );
     }
 
     private EContractDto dto() {
-        // EContractDto has 54 fields after V6 cleanup (removed tenantId + usableAreaM2).
         return new EContractDto(
-                contractId, null, null, tenantId,
-                "<html/>", "Contract", null, houseId, null,
-                Instant.now(), Instant.now().plusSeconds(86400),
-                EContractStatus.DRAFT, null, actorId, Instant.now(), null,
-                // tenantType, contractLanguage, tenantName, cccdNumber
-                null, null, null, null,
-                // dateOfBirth, gender, nationality, occupation, permanentAddress, detailedAddress
-                null, null, null, null, null, null,
-                // passportNumber, passportIssueDate, passportIssuePlace, passportExpiryDate
-                null, null, null, null,
-                // visaType, visaExpiryDate
-                null, null,
-                // cccdVerifiedAt, passportVerifiedAt
-                null, null,
-                // landCertNumber, landCertIssueDate, landCertIssuer (no usableAreaM2)
-                null, null, null,
-                // rentAmount, depositAmount, payDate, lateDays, latePenaltyPercent
-                null, null, null, null, null,
-                // depositRefundDays, handoverDate, renewNoticeDays
-                null, null, null,
-                // petPolicy, smokingPolicy, subleasePolicy, visitorPolicy
-                null, null, null, null,
-                // tempResidenceRegisterBy, taxResponsibility, meterReadingsStart
-                null, null, null,
-                // hasPowerCutClause, terminatedAt, terminatedReason, terminatedBy
-                null, null, null, null
+                contractId,
+                null,
+                null,
+                tenantId,
+                "<html/>",
+                "Contract",
+                null,
+                houseId,
+                null,
+                Instant.now(),
+                Instant.now().plusSeconds(86400),
+                EContractStatus.DRAFT,
+                null,
+                actorId,
+                Instant.now(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
         );
     }
 
@@ -223,7 +252,7 @@ class EContractServiceImplTest {
 
             assertThatThrownBy(() -> service.getById(contractId, landlordAuth))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("chưa được tạo PDF");
+                    .hasMessageContaining("PDF has not been generated");
         }
     }
 
@@ -705,7 +734,7 @@ class EContractServiceImplTest {
     }
 
     @Nested
-    @DisplayName("signByLandlord / signByTenant — error branches")
+    @DisplayName("signByLandlord / signByTenant â€” error branches")
     class SignErrorBranches {
 
         @Test
@@ -718,7 +747,7 @@ class EContractServiceImplTest {
 
             assertThatThrownBy(() -> service.signByLandlord(process))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("Landlord ký thất bại");
+                    .hasMessageContaining("Landlord signing");
         }
 
         @Test
@@ -731,7 +760,7 @@ class EContractServiceImplTest {
 
             assertThatThrownBy(() -> service.signByTenant(process))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("Tenant ký thất bại");
+                    .hasMessageContaining("Tenant signing");
         }
     }
 
@@ -776,7 +805,7 @@ class EContractServiceImplTest {
         // helper to build request
         private static final class CloneForRenewalRequestStub {
             CloneForRenewalRequest with(UUID renewalRequestId) {
-                // new start/end placeholder dates — doesn't matter since findById throws first
+                // new start/end placeholder dates â€” doesn't matter since findById throws first
                 return new CloneForRenewalRequest(
                         1_000_000L, Instant.now(),
                         Instant.now().plusSeconds(86400), renewalRequestId);

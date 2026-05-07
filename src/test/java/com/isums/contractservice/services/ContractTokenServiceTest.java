@@ -66,7 +66,7 @@ class ContractTokenServiceTest {
         void nullToken() {
             assertThatThrownBy(() -> service.validateToken(null, UUID.randomUUID()))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("không được để trống");
+                    .hasMessageContaining("not be blank");
             verifyNoInteractions(redis);
         }
 
@@ -85,7 +85,7 @@ class ContractTokenServiceTest {
 
             assertThatThrownBy(() -> service.validateToken("t1", UUID.randomUUID()))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("hết hạn");
+                    .hasMessageContaining("expired");
         }
 
         @Test
@@ -96,7 +96,7 @@ class ContractTokenServiceTest {
 
             assertThatThrownBy(() -> service.validateToken("t2", UUID.randomUUID()))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("bị hỏng");
+                    .hasMessageContaining("malformed");
         }
 
         @Test
@@ -109,7 +109,7 @@ class ContractTokenServiceTest {
 
             assertThatThrownBy(() -> service.validateToken("t3", UUID.randomUUID()))
                     .isInstanceOf(IllegalArgumentException.class)
-                    .hasMessageContaining("không khớp");
+                    .hasMessageContaining("does not match");
         }
 
         @Test

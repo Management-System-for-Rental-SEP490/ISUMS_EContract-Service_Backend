@@ -104,7 +104,7 @@ class ContractTerminationServiceimplTest {
 
             assertThatThrownBy(() -> service.handleExpiredContract(c))
                     .isInstanceOf(IllegalStateException.class)
-                    .hasMessageContaining("DRAFT → PENDING_TERMINATION");
+                    .hasMessageContaining("Cannot transition");
         }
 
         @Test

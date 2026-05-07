@@ -46,7 +46,7 @@
     <tr><td>Địa chỉ thường trú:</td><td>{{LANDLORD_PERMANENT_ADDRESS}}</td></tr>
     <tr><td>Địa chỉ liên hệ:</td><td>{{LANDLORD_ADDRESS}}</td></tr>
     <tr><td>Điện thoại / Email:</td><td>{{LANDLORD_PHONE}} / {{LANDLORD_EMAIL}}</td></tr>
-    <tr><td>Mã số thuế:</td><td>{{LANDLORD_TAX_CODE}}</td></tr>
+    {{LANDLORD_TAX_CODE_ROW}}
     <tr><td>Tài khoản nhận tiền:</td><td>{{LANDLORD_BANK}} — {{LANDLORD_BANK_NAME}}</td></tr>
     </tbody>
 </table>
@@ -60,7 +60,6 @@
     <tr><td>Ngày cấp / Nơi cấp:</td><td>{{TENANT_ID_ISSUE}}</td></tr>
     <tr><td>Ngày sinh / Giới tính:</td><td>{{TENANT_DOB}} / {{TENANT_GENDER}}</td></tr>
     <tr><td>Quốc tịch:</td><td>{{TENANT_NATIONALITY}}</td></tr>
-    <tr><td>Nghề nghiệp:</td><td>{{TENANT_OCCUPATION}}</td></tr>
     <tr><td>Địa chỉ thường trú:</td><td>{{TENANT_PERMANENT_ADDRESS}}</td></tr>
     <tr><td>Điện thoại / Email:</td><td>{{TENANT_PHONE}} / {{TENANT_EMAIL}}</td></tr>
     <tr><td>Thị thực / Hạn thị thực:</td><td>{{TENANT_VISA}}</td></tr>
@@ -105,7 +104,7 @@
 
 <div class="clause-title">Điều 4. Đặt cọc</div>
 <p>
-    Tiền đặt cọc: <b>{{DEPOSIT_AMOUNT}}</b> VNĐ, nộp ngày {{DEPOSIT_DATE}},
+    Tiền đặt cọc: <b>{{DEPOSIT_AMOUNT}}</b> VNĐ (bằng chữ: <i>{{DEPOSIT_TEXT}}</i>), nộp ngày {{DEPOSIT_DATE}},
     bảo đảm thực hiện hợp đồng theo Bộ luật Dân sự 2015.
 </p>
 <p>
@@ -168,6 +167,23 @@
     Chấm dứt trước hạn do lỗi Bên B: {{EARLY_TERMINATION_PENALTY}}.
     Chấm dứt trước hạn do lỗi Bên A: {{LANDLORD_BREACH_COMPENSATION}}.
 </p>
+<p>
+    <b>Nhà không đủ điều kiện sử dụng:</b> Nếu sau khi ký hợp đồng nhưng trước hoặc tại thời điểm bàn giao,
+    Bên A hoặc nhân sự kỹ thuật được Bên A chỉ định xác nhận Nhà thuê không bảo đảm điều kiện sử dụng an toàn,
+    hợp pháp hoặc không phù hợp mục đích thuê do nguyên nhân không thuộc lỗi Bên B, Bên B không bị mất cọc.
+    Trong {{DEPOSIT_REFUND_DAYS}} ngày, Bên A phải bố trí nhà thay thế được Bên B chấp thuận và chuyển tiền cọc
+    sang hợp đồng/phụ lục thay thế, hoặc hoàn trả toàn bộ tiền cọc, tiền thuê/trả trước chưa sử dụng và các khoản
+    đã thu liên quan. Khoản phạt cọc/bồi thường thiệt hại, nếu có, thực hiện theo Bộ luật Dân sự 2015 và thỏa thuận
+    hợp pháp của các bên.
+</p>
+<p>
+    <b>Đổi nhà theo nhu cầu của Bên B trong thời hạn thuê:</b> Nếu Bên B đang thuê và đề nghị chuyển sang nhà khác
+    vì nhu cầu sử dụng thay đổi, việc đổi nhà chỉ được thực hiện khi Bên A chấp thuận bằng văn bản/báo giá trên hệ thống,
+    hai bên thống nhất ngày bàn giao, ký hợp đồng hoặc phụ lục thay thế và Bên B thanh toán đầy đủ phần chênh lệch đến hạn
+    (bao gồm tiền cọc/tiền thuê tăng thêm, phí phát sinh hợp lý, tiền điện nước/dịch vụ chưa thanh toán và chi phí sửa chữa
+    thiệt hại do lỗi Bên B nếu có). Tiền cọc của hợp đồng cũ được đối trừ/chuyển sang hợp đồng mới sau khi kiểm tra hiện trạng
+    nhà cũ; phần còn thừa được hoàn trả, phần còn thiếu Bên B phải thanh toán trước khi nhận bàn giao nhà mới.
+</p>
 
 <div class="clause-title">Điều 11. Bất khả kháng</div>
 <p>
@@ -192,6 +208,8 @@
     <li>{{PREVAILING_LANGUAGE_CLAUSE}}</li>
 </ul>
 
+{{REPLACEMENT_BLOCK}}
+
 <br/><br/>
 <table class="no-border">
     <tbody>
@@ -214,3 +232,4 @@
 
 </body>
 </html>
+

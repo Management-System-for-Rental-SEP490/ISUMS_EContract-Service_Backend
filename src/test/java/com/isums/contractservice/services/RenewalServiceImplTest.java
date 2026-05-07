@@ -79,7 +79,7 @@ class RenewalServiceImplTest {
         @Test
         @DisplayName("creates PENDING request, flags hasCompeting=false when no competing deposits")
         void happy() {
-            EContract c = contract(EContractStatus.IN_PROGRESS);
+            EContract c = contract(EContractStatus.COMPLETED);
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
             when(renewalRequestRepo.findByContractIdAndStatusNotIn(eq(contractId), anyList()))
                     .thenReturn(Optional.empty());
@@ -104,7 +104,7 @@ class RenewalServiceImplTest {
         @Test
         @DisplayName("flags hasCompeting=true when another active request exists for the house")
         void hasCompeting() {
-            EContract c = contract(EContractStatus.IN_PROGRESS);
+            EContract c = contract(EContractStatus.COMPLETED);
             UUID otherContractId = UUID.randomUUID();
             RenewalRequest competing = RenewalRequest.builder()
                     .id(UUID.randomUUID()).contractId(otherContractId).houseId(houseId).build();
@@ -134,20 +134,20 @@ class RenewalServiceImplTest {
         }
 
         @Test
-        @DisplayName("throws BusinessException when contract not IN_PROGRESS")
+        @DisplayName("throws BusinessException when contract not COMPLETED")
         void contractNotActive() {
             when(contractRepo.findById(contractId))
                     .thenReturn(Optional.of(contract(EContractStatus.DRAFT)));
 
             assertThatThrownBy(() -> service.requestRenewal(contractId, tenantId, new RenewalRequestBody(null)))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining("đang hoạt động");
+                    .hasMessageContaining("COMPLETED");
         }
 
         @Test
         @DisplayName("throws ForbiddenException when caller is not the tenant of the contract")
         void notTenant() {
-            EContract c = contract(EContractStatus.IN_PROGRESS);
+            EContract c = contract(EContractStatus.COMPLETED);
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
 
             UUID impostor = UUID.randomUUID();
@@ -159,7 +159,7 @@ class RenewalServiceImplTest {
         @Test
         @DisplayName("throws BusinessException when renewal request already pending")
         void alreadyPending() {
-            EContract c = contract(EContractStatus.IN_PROGRESS);
+            EContract c = contract(EContractStatus.COMPLETED);
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
             when(renewalRequestRepo.findByContractIdAndStatusNotIn(eq(contractId), anyList()))
                     .thenReturn(Optional.of(RenewalRequest.builder()
@@ -167,7 +167,7 @@ class RenewalServiceImplTest {
 
             assertThatThrownBy(() -> service.requestRenewal(contractId, tenantId, new RenewalRequestBody(null)))
                     .isInstanceOf(BusinessException.class)
-                    .hasMessageContaining("đã gửi yêu cầu");
+                    .hasMessageContaining("Renewal request submitted");
             verify(renewalRequestRepo, never()).save(any());
         }
     }
@@ -185,7 +185,7 @@ class RenewalServiceImplTest {
                     .status(RenewalRequestStatus.PENDING_MANAGER_REVIEW).build();
 
             when(renewalRequestRepo.findById(renewalId)).thenReturn(Optional.of(request));
-            when(contractRepo.findById(contractId)).thenReturn(Optional.of(contract(EContractStatus.IN_PROGRESS)));
+            when(contractRepo.findById(contractId)).thenReturn(Optional.of(contract(EContractStatus.COMPLETED)));
             when(userGrpcClient.getUserById(tenantId.toString()))
                     .thenReturn(UserResponse.newBuilder().setEmail("alice@example.com").build());
 
@@ -263,9 +263,9 @@ class RenewalServiceImplTest {
     class GetStatus {
 
         @Test
-        @DisplayName("returns canRequest=true when no active request and contract IN_PROGRESS")
+        @DisplayName("returns canRequest=true when no active request and contract COMPLETED")
         void canRequest() {
-            EContract c = contract(EContractStatus.IN_PROGRESS);
+            EContract c = contract(EContractStatus.COMPLETED);
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
             when(renewalRequestRepo.findByContractIdAndStatusNotIn(eq(contractId), anyList()))
                     .thenReturn(Optional.empty());
@@ -283,7 +283,7 @@ class RenewalServiceImplTest {
         @Test
         @DisplayName("returns canRequest=false + activeRequestStatus when pending request exists")
         void hasActive() {
-            EContract c = contract(EContractStatus.IN_PROGRESS);
+            EContract c = contract(EContractStatus.COMPLETED);
             RenewalRequest req = RenewalRequest.builder()
                     .id(UUID.randomUUID()).contractId(contractId)
                     .status(RenewalRequestStatus.PENDING_MANAGER_REVIEW).build();
@@ -302,7 +302,7 @@ class RenewalServiceImplTest {
         @Test
         @DisplayName("windowOpenForNewTenants=true when contract already expired (daysUntilExpiry<=0)")
         void windowOpen() {
-            EContract c = contract(EContractStatus.IN_PROGRESS);
+            EContract c = contract(EContractStatus.COMPLETED);
             c.setEndAt(Instant.now().minus(5, ChronoUnit.DAYS));
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
             when(renewalRequestRepo.findByContractIdAndStatusNotIn(eq(contractId), anyList()))

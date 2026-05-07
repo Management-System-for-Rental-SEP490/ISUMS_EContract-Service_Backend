@@ -2,6 +2,7 @@ package com.isums.contractservice.domains.dtos;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.isums.contractservice.domains.enums.ContractLanguage;
+import com.isums.contractservice.domains.enums.DepositStatus;
 import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.enums.PetPolicy;
 import com.isums.contractservice.domains.enums.SmokingPolicy;
@@ -72,6 +73,10 @@ public record EContractDto(
         // Money
         Long rentAmount,
         Long depositAmount,
+        DepositStatus depositStatus,
+        UUID relocationSourceContractId,
+        UUID replacedByContractId,
+        Long transferredDepositAmount,
         Integer payDate,
         Integer lateDays,
         Integer latePenaltyPercent,
@@ -107,7 +112,8 @@ public record EContractDto(
                 dateOfBirth, gender, nationality, occupation, permanentAddress, detailedAddress,
                 passportNumber, passportIssueDate, passportIssuePlace, passportExpiryDate,
                 visaType, visaExpiryDate, cccdVerifiedAt, passportVerifiedAt,
-                rentAmount, depositAmount, payDate, lateDays, latePenaltyPercent,
+                rentAmount, depositAmount, depositStatus, relocationSourceContractId,
+                replacedByContractId, transferredDepositAmount, payDate, lateDays, latePenaltyPercent,
                 depositRefundDays, handoverDate, renewNoticeDays,
                 petPolicy, smokingPolicy, subleasePolicy, visitorPolicy,
                 tempResidenceRegisterBy, taxResponsibility, meterReadingsStart,

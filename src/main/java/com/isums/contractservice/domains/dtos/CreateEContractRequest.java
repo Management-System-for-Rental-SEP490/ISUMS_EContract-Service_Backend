@@ -24,24 +24,21 @@ public record CreateEContractRequest(
         @NotBlank String name,
         @NotBlank @Email String email,
         @Nullable
-        @Pattern(regexp = "^\\+?[0-9]{9,15}$", message = "Số điện thoại không hợp lệ")
+        @Pattern(regexp = "^\\+?[0-9]{9,15}$", message = "Invalid phone number")
         String phoneNumber,
 
-        // Tenant type drives which identity doc is required.
         @Nullable TenantType tenantType,
 
-        // VN CCCD — 12 digits. Required when tenantType = VIETNAMESE.
         @Nullable
-        @Pattern(regexp = "^\\d{12}$", message = "CCCD phải có đúng 12 chữ số")
+        @Pattern(regexp = "^\\d{12}$", message = "Citizen ID must have exactly 12 digits")
         String identityNumber,
         @Nullable Instant dateOfIssue,
         @Nullable String placeOfIssue,
         @Nullable String tenantAddress,
         @Nullable Boolean hasPowerCutClause,
 
-        // Passport — ICAO 9303 format. Required when tenantType = FOREIGNER.
         @Nullable
-        @Pattern(regexp = "^[A-Z0-9]{6,9}$", message = "Số hộ chiếu không đúng định dạng ICAO")
+        @Pattern(regexp = "^[A-Z0-9]{6,9}$", message = "Passport number does not match ICAO format")
         String passportNumber,
         @Nullable LocalDate passportIssueDate,
         @Nullable String passportIssuePlace,
@@ -50,30 +47,23 @@ public record CreateEContractRequest(
         @Nullable LocalDate visaExpiryDate,
         @Nullable String nationality,
 
-        // Tenant personal info (Luật Cư trú 2020)
         @Nullable @Past LocalDate dateOfBirth,
         @Nullable String gender,
         @Nullable String occupation,
         @Nullable String permanentAddress,
         @Nullable @Valid DetailedAddressDto detailedAddress,
 
-        // Co-tenants
         @Nullable @Valid List<CoTenantDto> coTenants,
 
-        // House
         @NotNull UUID houseId,
         @NotNull Instant startDate,
         @NotNull Instant endDate,
 
-        // House facts (area, structure, GCN) come from House-service gRPC —
-        // one fact per house, used by every lease contract. Not on the request.
-
-        // Money
         @NotNull @Min(0) Long rentAmount,
         @NotNull @Min(1) @Max(31) Integer payDate,
         @NotNull @Min(0) Long depositAmount,
-        @NotNull Instant depositDate,
-        @NotNull Instant handoverDate,
+        @Nullable Instant depositDate,
+        @Nullable Instant handoverDate,
 
         @Nullable @Valid MeterReadingsDto meterReadingsStart,
 
@@ -92,17 +82,14 @@ public record CreateEContractRequest(
         @Nullable Integer disputeDays,
         @Nullable String disputeForum,
 
-        // Rules (nội quy)
         @Nullable PetPolicy petPolicy,
         @Nullable SmokingPolicy smokingPolicy,
         @Nullable SubleasePolicy subleasePolicy,
         @Nullable VisitorPolicy visitorPolicy,
 
-        // Legal responsibilities
         @Nullable TempResidenceRegisterBy tempResidenceRegisterBy,
         @Nullable TaxResponsibility taxResponsibility,
 
-        // Language selection
         @Nullable ContractLanguage contractLanguage
 ) {
     public int lateDaysOrDefault() {
@@ -118,11 +105,11 @@ public record CreateEContractRequest(
     }
 
     public String payCycleOrDefault() {
-        return payCycle != null ? payCycle : "Hàng tháng";
+        return payCycle != null ? payCycle : "Monthly";
     }
 
     public String taxFeeNoteOrDefault() {
-        return taxFeeNote != null ? taxFeeNote : "Miễn thuế";
+        return taxFeeNote != null ? taxFeeNote : "Tax exempt";
     }
 
     public int renewNoticeDaysOrDefault() {
@@ -142,15 +129,23 @@ public record CreateEContractRequest(
     }
 
     public String earlyTerminationPenaltyOrDefault() {
-        return earlyTerminationPenalty != null ? earlyTerminationPenalty : "Mất toàn bộ tiền cọc";
+        return earlyTerminationPenalty != null ? earlyTerminationPenalty : "Forfeiture of the full deposit";
     }
 
     public String landlordBreachCompensationOrDefault() {
-        return landlordBreachCompensation != null ? landlordBreachCompensation : "Đền cọc gấp đôi";
+        return landlordBreachCompensation != null ? landlordBreachCompensation : "Double-deposit compensation";
     }
 
     public int forceMajeureNoticeHoursOrDefault() {
         return forceMajeureNoticeHours != null ? forceMajeureNoticeHours : 24;
+    }
+
+    public Instant effectiveHandoverDate() {
+        return handoverDate != null ? handoverDate : startDate;
+    }
+
+    public Instant effectiveDepositDate() {
+        return depositDate != null ? depositDate : startDate;
     }
 
     public int disputeDaysOrDefault() {
@@ -158,7 +153,7 @@ public record CreateEContractRequest(
     }
 
     public String disputeForumOrDefault() {
-        return disputeForum != null ? disputeForum : "Tòa án nhân dân có thẩm quyền";
+        return disputeForum != null ? disputeForum : "Competent People's Court";
     }
 
     public TenantType tenantTypeOrDefault() {
@@ -196,11 +191,6 @@ public record CreateEContractRequest(
         return taxResponsibility != null ? taxResponsibility : TaxResponsibility.LANDLORD;
     }
 
-    /**
-     * True when caller provided enough identity fields for the declared tenant type.
-     * Vietnamese: needs CCCD. Foreigner: needs passport + nationality.
-     * Enforced at service layer because cross-field rules don't fit Jakarta annotations.
-     */
     public boolean hasRequiredIdentity() {
         TenantType t = tenantTypeOrDefault();
         if (t == TenantType.VIETNAMESE) {
@@ -209,4 +199,23 @@ public record CreateEContractRequest(
         return passportNumber != null && !passportNumber.isBlank()
                 && nationality != null && !nationality.isBlank();
     }
+
+    public String passportValidityError() {
+        if (tenantTypeOrDefault() != TenantType.FOREIGNER) return null;
+        if (passportExpiryDate == null) return null;
+
+        LocalDate endDay = endDate != null
+                ? endDate.atZone(java.time.ZoneOffset.UTC).toLocalDate() : null;
+        if (endDay != null && passportExpiryDate.isBefore(endDay)) {
+            return "Passport expires (" + passportExpiryDate + ") before the contract ends ("
+                    + endDay + "). Please renew the passport before creating the contract.";
+        }
+
+        if (visaExpiryDate != null && endDay != null && visaExpiryDate.isBefore(endDay)) {
+            return "Visa expires (" + visaExpiryDate + ") before the contract ends ("
+                    + endDay + "). Please renew the visa before creating the contract.";
+        }
+        return null;
+    }
 }
+

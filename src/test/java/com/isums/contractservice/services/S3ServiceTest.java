@@ -89,7 +89,7 @@ class S3ServiceTest {
 
             assertThatThrownBy(() -> service.uploadCccdImage(broken, UUID.randomUUID(), "front"))
                     .isInstanceOf(RuntimeException.class)
-                    .hasMessageContaining("Upload CCCD thất bại");
+                    .hasMessageContaining("Citizen ID upload failed");
         }
     }
 

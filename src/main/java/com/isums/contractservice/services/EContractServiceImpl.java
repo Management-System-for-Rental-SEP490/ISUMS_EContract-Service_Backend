@@ -5,9 +5,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.isums.assetservice.grpc.AssetItemDto;
 import com.isums.contractservice.domains.dtos.*;
 import com.isums.contractservice.domains.entities.*;
+import com.isums.contractservice.domains.enums.DepositHandling;
+import com.isums.contractservice.domains.enums.DepositStatus;
 import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.enums.RenewalRequestStatus;
+import com.isums.contractservice.domains.enums.RelocationRequestStatus;
 import com.isums.contractservice.domains.events.*;
+import com.isums.contractservice.exceptions.BusinessException;
 import com.isums.contractservice.exceptions.NotFoundException;
 import com.isums.contractservice.exceptions.OcrValidationException;
 import com.isums.contractservice.infrastructures.abstracts.*;
@@ -58,6 +62,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.regex.*;
 
@@ -82,11 +87,22 @@ public class EContractServiceImpl implements EContractService {
     private final RenewalRequestRepository renewalRequestRepo;
     private final RenewalServiceImpl renewalService;
     private final ContractCoTenantRepository coTenantRepo;
+    private final ContractRelocationRequestRepository relocationRequestRepo;
     private final ContractHtmlBuilder htmlBuilder;
     private final OutboxPublisher outboxPublisher;
 
     private static final String PAGE_NS = "econtracts";
     private static final Duration PAGE_TTL = Duration.ofMinutes(60);
+
+    private static final ThreadLocal<com.isums.contractservice.domains.dtos.ReplacementContext> replacementContextHolder = new ThreadLocal<>();
+
+    public static void setPendingReplacementContext(com.isums.contractservice.domains.dtos.ReplacementContext ctx) {
+        replacementContextHolder.set(ctx);
+    }
+
+    public static void clearPendingReplacementContext() {
+        replacementContextHolder.remove();
+    }
 
     private final CachedPageService cachedPageService;
 
@@ -122,14 +138,18 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public EContractDto createDraft(UUID actorId, String jwtToken, CreateEContractRequest req) {
         try {
-            // Cross-field validation: FOREIGNER must supply passport + nationality,
-            // VIETNAMESE must supply CCCD. Jakarta @Pattern checks format but not presence.
+
             if (!req.hasRequiredIdentity()) {
                 throw new IllegalArgumentException(req.tenantTypeOrDefault() == com.isums.contractservice.domains.enums.TenantType.FOREIGNER
-                        ? "Người thuê nước ngoài phải có số hộ chiếu và quốc tịch."
-                        : "Người thuê Việt Nam phải có số CCCD.");
+                        ? "Foreign tenants must have a passport number and nationality."
+                        : "Vietnamese tenants must have a Citizen ID number.");
             }
 
             HouseResponse house = houseGrpc.getHouseById(req.houseId());
@@ -149,13 +169,16 @@ public class EContractServiceImpl implements EContractService {
 
             cachedPageService.evictAll(PAGE_NS);
 
-            return mapper.contractToDto(buildAndSaveDraft(actorId, tenantId, req, house));
+            EContract saved = buildAndSaveDraft(actorId, tenantId, req, house);
+            log.info("[Booking] Lock acquired contractId={} houseId={} tenantId={} actorId={}",
+                    saved.getId(), saved.getHouseId(), saved.getUserId(), actorId);
+            return mapper.contractToDto(saved);
 
         } catch (IllegalArgumentException | IllegalStateException | NotFoundException e) {
             throw e;
         } catch (Exception ex) {
             log.error("createDraft failed", ex);
-            throw new IllegalStateException("Tạo hợp đồng thất bại: " + ex.getMessage());
+            throw new IllegalStateException("Failed to create contract: " + ex.getMessage());
         }
     }
 
@@ -178,7 +201,7 @@ public class EContractServiceImpl implements EContractService {
     @Override
     public PageResponse<EContractDto> getAll(PageRequest request, org.springframework.security.core.Authentication auth) {
         ContractScope scope = resolveScope(auth);
-        // Cache key must vary by scope so one user's filtered list doesn't leak into another's.
+
         String scopedNs = PAGE_NS + ":" + scope.cacheKey();
         return cachedPageService.getOrLoad(scopedNs, request, new TypeReference<>() {
                 },
@@ -188,6 +211,7 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "user-contracts", allEntries = true)
     public EContractDto updateContract(UUID id, UpdateEContractRequest req) {
         EContract c = findById(id);
         EContractStatus current = c.getStatus();
@@ -202,7 +226,7 @@ public class EContractServiceImpl implements EContractService {
 
             contractRepo.save(c);
 
-            sendWsStatus(c.getId(), "CORRECTING", "Hợp đồng đang được hiệu chỉnh bởi chủ nhà. Vui lòng chờ phiên bản mới.");
+            sendWsStatus(c.getId(), "CORRECTING", "The contract is being revised by the landlord. Please wait for the new version.");
 
             log.info("[EContract] CORRECTING contractId={}", id);
 
@@ -213,7 +237,7 @@ public class EContractServiceImpl implements EContractService {
             contractRepo.save(c);
 
         } else {
-            throw new IllegalStateException("Không thể chỉnh sửa hợp đồng ở trạng thái: " + current);
+            throw new IllegalStateException("Cannot edit a contract in status: " + current);
         }
 
         return mapper.contractToDto(c);
@@ -221,12 +245,13 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
+    @CacheEvict(value = "user-contracts", allEntries = true)
     public EContractDto confirmByAdmin(UUID contractId, UUID actorId) {
         EContract c = findById(contractId);
         EContractStatus cur = c.getStatus();
 
         if (cur != EContractStatus.DRAFT && cur != EContractStatus.CORRECTING && cur != EContractStatus.PENDING_TENANT_REVIEW) {
-            throw new IllegalStateException("Chỉ confirm được ở trạng thái DRAFT, PENDING_TENANT_REVIEW hoặc CORRECTING. Hiện tại: " + cur);
+            throw new IllegalStateException("Confirmation is only allowed in DRAFT, PENDING_TENANT_REVIEW or CORRECTING. Current: " + cur);
         }
 
         byte[] pdfBytes = renderHtmlToPdf(c.getHtml());
@@ -256,9 +281,6 @@ public class EContractServiceImpl implements EContractService {
 
         cachedPageService.evictAll(PAGE_NS);
 
-        // Enqueue via outbox — atomic with the status transition above. If the DB
-        // commit succeeds but Kafka is down, the poller retries until sent;
-        // if the tx rolls back, no phantom tenant email goes out.
         outboxPublisher.enqueue(
                 "confirmAndSendToTenant-topic",
                 contractId.toString(),
@@ -275,7 +297,7 @@ public class EContractServiceImpl implements EContractService {
         EContract c = findById(contractId);
 
         if (c.getSnapshotKey() == null) {
-            throw new IllegalStateException("Hợp đồng chưa được tạo PDF.");
+            throw new IllegalStateException("The contract PDF has not been generated yet.");
         }
 
         return s3.presignedUrl(c.getSnapshotKey(), 60);
@@ -288,7 +310,7 @@ public class EContractServiceImpl implements EContractService {
         EContract c = findById(contractId);
 
         if (c.getSnapshotKey() == null) {
-            throw new IllegalStateException("Hợp đồng chưa được tạo PDF.");
+            throw new IllegalStateException("The contract PDF has not been generated yet.");
         }
 
         return s3.presignedUrl(c.getSnapshotKey(), pdfUrlTtlMinutes);
@@ -303,18 +325,17 @@ public class EContractServiceImpl implements EContractService {
         EContract c = findById(contractId);
 
         if (c.getStatus() != EContractStatus.PENDING_TENANT_REVIEW) {
-            throw new IllegalStateException("Hợp đồng không ở trạng thái chờ xác nhận. Hiện tại: " + c.getStatus());
+            throw new IllegalStateException("Contract is not awaiting confirmation. Current: " + c.getStatus());
         }
         if (c.getSnapshotKey() == null) {
-            throw new IllegalStateException("Hợp đồng chưa có PDF snapshot. Vui lòng liên hệ chủ nhà.");
+            throw new IllegalStateException("The contract has no PDF snapshot. Please contact the landlord.");
         }
 
-        validateImage(frontImage, "mặt trước");
-        validateImage(backImage, "mặt sau");
+        validateImage(frontImage, "front");
+        validateImage(backImage, "back");
 
-        OcrResult ocrFront = callOcrFrontAndValidate(
-                frontImage, c.getCccdNumber(), c.getTenantName());
-        validateCccdBack(backImage);
+        OcrResult ocrFront = callOcrCccdQuickVerify(
+                frontImage, backImage, c.getCccdNumber(), c.getTenantName());
 
         s3.deleteIfExists(c.getCccdFrontKey());
         s3.deleteIfExists(c.getCccdBackKey());
@@ -343,10 +364,13 @@ public class EContractServiceImpl implements EContractService {
         VnptDocumentDto document = ensureVnptDocument(c, finalPdf, token);
         String documentId = document.id();
 
+        s3.deleteIfExists(frontKey);
+        s3.deleteIfExists(backKey);
+
         c.setDocumentId(documentId);
         c.setDocumentNo(document.no());
-        c.setCccdFrontKey(frontKey);
-        c.setCccdBackKey(backKey);
+        c.setCccdFrontKey(null);
+        c.setCccdBackKey(null);
         c.setCccdVerifiedAt(Instant.now());
         if (c.getStatus() != EContractStatus.READY) {
             c.getStatus().validateTransition(EContractStatus.READY);
@@ -366,11 +390,11 @@ public class EContractServiceImpl implements EContractService {
         if (sendResult == null || sendResult.getData() == null) {
             c.setStatus(EContractStatus.PENDING_TENANT_REVIEW);
             contractRepo.save(c);
-            throw new IllegalStateException("VNPT sendProcess thất bại: "
+            throw new IllegalStateException("VNPT sendProcess failed: "
                     + (sendResult != null ? sendResult.getMessage() : "null"));
         }
 
-        log.info("[EContract] READY contractId={} documentId={} cccdId={}",
+        log.info("[EContract] READY contractId={} documentId={} cccdPurged=true",
                 contractId, documentId,
                 ocrFront != null ? ocrFront.identityNumber() : "ocr-skipped");
 
@@ -391,13 +415,13 @@ public class EContractServiceImpl implements EContractService {
         EContract c = findById(contractId);
 
         if (c.getStatus() != EContractStatus.PENDING_TENANT_REVIEW) {
-            throw new IllegalStateException("Hợp đồng không ở trạng thái chờ xác nhận. Hiện tại: " + c.getStatus());
+            throw new IllegalStateException("Contract is not awaiting confirmation. Current: " + c.getStatus());
         }
         if (c.getSnapshotKey() == null) {
-            throw new IllegalStateException("Hợp đồng chưa có PDF snapshot. Vui lòng liên hệ chủ nhà.");
+            throw new IllegalStateException("The contract has no PDF snapshot. Please contact the landlord.");
         }
 
-        validateImage(passportImage, "hộ chiếu");
+        validateImage(passportImage, "passport");
 
         PassportIdentityDto ocrPassport = callOcrPassportAndValidate(
                 passportImage, c.getPassportNumber(), c.getTenantName(), c.getNationality());
@@ -426,9 +450,11 @@ public class EContractServiceImpl implements EContractService {
         VnptDocumentDto document = ensureVnptDocument(c, finalPdf, token);
         String documentId = document.id();
 
+        s3.deleteIfExists(passportKey);
+
         c.setDocumentId(documentId);
         c.setDocumentNo(document.no());
-        c.setPassportFrontKey(passportKey);
+        c.setPassportFrontKey(null);
         c.setPassportVerifiedAt(Instant.now());
         if (c.getStatus() != EContractStatus.READY) {
             c.getStatus().validateTransition(EContractStatus.READY);
@@ -448,7 +474,7 @@ public class EContractServiceImpl implements EContractService {
         if (sendResult == null || sendResult.getData() == null) {
             c.setStatus(EContractStatus.PENDING_TENANT_REVIEW);
             contractRepo.save(c);
-            throw new IllegalStateException("VNPT sendProcess thất bại: "
+            throw new IllegalStateException("VNPT sendProcess failed: "
                     + (sendResult != null ? sendResult.getMessage() : "null"));
         }
 
@@ -468,7 +494,17 @@ public class EContractServiceImpl implements EContractService {
     @Transactional(readOnly = true)
     public boolean hasPassport(UUID contractId) {
         EContract c = findById(contractId);
-        return c.getPassportFrontKey() != null;
+        return c.getPassportVerifiedAt() != null;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public TenantMetaDto getTenantMeta(UUID contractId, String contractToken) {
+        contractTokenService.validateToken(contractToken, contractId);
+        EContract c = findById(contractId);
+        String tenantType = c.getTenantType() != null ? c.getTenantType().name() : null;
+        String contractLanguage = c.getContractLanguage() != null ? c.getContractLanguage().name() : null;
+        return new TenantMetaDto(tenantType, contractLanguage);
     }
 
     @Override
@@ -478,24 +514,96 @@ public class EContractServiceImpl implements EContractService {
 
         if (contract.getStatus() != EContractStatus.READY) {
             throw new IllegalStateException(
-                    "Chỉ replay notification khi hợp đồng đang ở READY. Hiện tại: " + contract.getStatus());
+                    "Only allowed to replay notifications when the contract is READY. Current: " + contract.getStatus());
         }
         if (contract.getCreatedBy() == null) {
             throw new IllegalStateException(
-                    "Hợp đồng thiếu createdBy nên không xác định được người nhận notification.");
+                    "Contract is missing createdBy so the notification recipient cannot be determined.");
         }
 
         sendReadyForLandlordSignatureEvent(contract);
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public void resendTenantSignatureNotification(UUID contractId) {
+        EContract contract = findById(contractId);
+
+        if (contract.getStatus() != EContractStatus.IN_PROGRESS) {
+            throw new IllegalStateException(
+                    "Resend is only allowed when the contract is IN_PROGRESS (waiting for tenant signature). Current: " + contract.getStatus());
+        }
+        if (contract.getDocumentId() == null || contract.getDocumentId().isBlank()) {
+            throw new IllegalStateException("Contract has no VNPT documentId; nothing to resend.");
+        }
+        if (contract.getUserId() == null) {
+            throw new IllegalStateException("Contract has no tenant userId; cannot rebuild workflow.");
+        }
+
+        String token = vnptClient.getToken();
+        String documentId = contract.getDocumentId();
+
+        VnptResult<VnptDocumentDto> docResult = vnptClient.getEContractById(documentId, token);
+        if (docResult == null || !Boolean.TRUE.equals(docResult.getSuccess()) || docResult.getData() == null) {
+            String reason = docResult != null ? docResult.getMessage() : "null response";
+            log.error("[EContract] resend lookup failed contractId={} documentId={} reason={}",
+                    contractId, documentId, reason);
+            throw new IllegalStateException("VNPT getEContractById failed: " + reason);
+        }
+
+        List<VnptProcess> existing = docResult.getData().processes();
+        if (existing == null || existing.size() < 2) {
+            throw new IllegalStateException(
+                    "VNPT workflow has fewer than 2 processes; cannot rebuild for resend.");
+        }
+
+        List<VnptProcess> sorted = existing.stream()
+                .sorted(Comparator.comparingInt(VnptProcess::orderNo))
+                .toList();
+        VnptProcess landlordProcess = sorted.get(0);
+        VnptProcess tenantProcess = sorted.get(1);
+
+        List<ProcessesRequestDTO> processes = List.of(
+                new ProcessesRequestDTO(1, vnptLandlordUsername, "E",
+                        landlordProcess.position(), landlordProcess.pageSign()),
+                new ProcessesRequestDTO(2, contract.getUserId().toString(), "E",
+                        tenantProcess.position(), tenantProcess.pageSign())
+        );
+
+        VnptResult<VnptDocumentDto> updateResult = vnptClient.UpdateProcess(token,
+                new VnptUpdateProcessDTO(documentId, true, processes));
+        if (updateResult == null || !Boolean.TRUE.equals(updateResult.getSuccess())) {
+            String reason = updateResult != null ? updateResult.getMessage() : "null response";
+            log.error("[EContract] resend update-process failed contractId={} reason={}",
+                    contractId, reason);
+            throw new IllegalStateException("VNPT UpdateProcess failed: " + reason);
+        }
+
+        VnptResult<VnptDocumentDto> sendResult = vnptClient.sendProcess(token, documentId);
+        if (sendResult == null || !Boolean.TRUE.equals(sendResult.getSuccess())) {
+            String reason = sendResult != null ? sendResult.getMessage() : "null response";
+            log.error("[EContract] resend send-process failed contractId={} reason={}",
+                    contractId, reason);
+            throw new IllegalStateException("VNPT sendProcess failed: " + reason);
+        }
+
+        log.info("[EContract] Resent tenant-signature email contractId={} documentId={}",
+                contractId, documentId);
+    }
+
+    @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public ProcessResponse signByLandlord(VnptProcessDto process) {
-        VnptProcessDto withToken = process.withToken(vnptClient.getToken());
+        VnptProcessDto withToken = process.withNormalizedPosition().withToken(vnptClient.getToken());
         VnptResult<ProcessResponse> result = vnptClient.signProcess(withToken);
 
         if (result == null || result.getData() == null) {
-            throw new IllegalStateException("Landlord ký thất bại: "
+            throw new IllegalStateException("Landlord signing failed: "
                     + (result != null ? result.getMessage() : "null"));
         }
 
@@ -517,30 +625,38 @@ public class EContractServiceImpl implements EContractService {
     public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode) {
         try {
             ProcessLoginInfoDto result = parseProcessLogin(vnptClient.getAccessInfoByProcessCode(processCode));
-            EContract contract = contractRepo.findByDocumentId(result.documentId()).orElseThrow(() -> new NotFoundException("EContract not found"));
+            EContract contract = contractRepo.findByDocumentId(result.documentId())
+                    .orElseThrow(() -> new BusinessException(BusinessException.CONTRACT_NOT_FOUND, "Contract not found"));
             if (contract.getSnapshotKey() == null) {
-                throw new IllegalStateException("Hợp đồng chưa được tạo PDF.");
+                throw new BusinessException(BusinessException.PDF_NOT_READY, "Contract PDF not ready");
             }
 
             String pdfUrl = s3.presignedUrl(contract.getSnapshotKey(), pdfUrlTtlMinutes);
-            log.info(pdfUrl);
-
             return result.updatePdfUrl(pdfUrl);
+        } catch (BusinessException ex) {
+            throw ex;
         } catch (Exception ex) {
             log.error("getAccessInfoByProcessCode failed processCode={}", processCode, ex);
-            throw new IllegalStateException("Lấy thông tin ký thất bại: " + ex.getMessage());
+            String detail = ex.getMessage() != null ? ex.getMessage().toLowerCase() : "";
+            if (detail.contains("invalid process code")) {
+                throw new BusinessException(BusinessException.INVALID_PROCESS_CODE, "Invalid signing link");
+            }
+            throw new BusinessException(BusinessException.SIGNING_INFO_UNAVAILABLE, "Cannot load signing info");
         }
     }
 
-
     @Override
     @Transactional
-    @CacheEvict(cacheNames = "vnptProcessCode", key = "#process.processCode")
+    @Caching(evict = {
+            @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public ProcessResponse signByTenant(VnptProcessDto process) {
-        VnptResult<ProcessResponse> result = vnptClient.signProcess(process);
+        VnptResult<ProcessResponse> result = vnptClient.signProcess(process.withNormalizedPosition());
 
         if (result == null || result.getData() == null) {
-            throw new IllegalStateException("Tenant ký thất bại: "
+            throw new IllegalStateException("Tenant signing failed: "
                     + (result != null ? result.getMessage() : "null"));
         }
 
@@ -548,11 +664,10 @@ public class EContractServiceImpl implements EContractService {
             EContract c = findByDocumentId(String.valueOf(result.getData().id()));
             c.getStatus().validateTransition(EContractStatus.COMPLETED);
             c.setStatus(EContractStatus.COMPLETED);
+            c.setDepositStatus(resolveCompletedDepositStatus(c));
             contractRepo.save(c);
             log.info("[EContract] COMPLETED contractId={}", c.getId());
 
-            // House mapping + Keycloak activation happen downstream in Payment-Service
-            // after deposit is paid (see ContractEventListener.handleDepositPaid).
             fetchAndStoreSignedPdf(c);
 
             cachedPageService.evictAll(PAGE_NS);
@@ -563,6 +678,11 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public void cancelByTenant(UUID contractId, String reason, UUID tenantUserId, String contractToken) {
 
         contractTokenService.validateToken(contractToken, contractId);
@@ -571,7 +691,7 @@ public class EContractServiceImpl implements EContractService {
         if (c.getStatus() != EContractStatus.PENDING_TENANT_REVIEW
                 && c.getStatus() != EContractStatus.IN_PROGRESS
                 && c.getStatus() != EContractStatus.COMPLETED) {
-            throw new IllegalStateException("Tenant chỉ huỷ được ở PENDING_TENANT_REVIEW hoặc IN_PROGRESS. Hiện tại: " + c.getStatus());
+            throw new IllegalStateException("Tenant may only cancel in PENDING_TENANT_REVIEW or IN_PROGRESS. Current: " + c.getStatus());
         }
         c.setStatus(EContractStatus.CANCELLED_BY_TENANT);
         c.setTerminatedAt(Instant.now());
@@ -589,11 +709,16 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
     public void cancelByLandlord(UUID contractId, String reason, UUID actorId) {
         EContract c = findById(contractId);
         if (c.getStatus() != EContractStatus.CORRECTING
                 && c.getStatus() != EContractStatus.READY) {
-            throw new IllegalStateException("Landlord chỉ huỷ được ở CORRECTING hoặc READY. Hiện tại: " + c.getStatus());
+            throw new IllegalStateException("Landlord may only cancel in CORRECTING or READY. Current: " + c.getStatus());
         }
         c.setStatus(EContractStatus.CANCELLED_BY_LANDLORD);
         c.setTerminatedAt(Instant.now());
@@ -612,11 +737,9 @@ public class EContractServiceImpl implements EContractService {
     public void deleteContract(UUID contractId, UUID actorId) {
         EContract c = findById(contractId);
         if (c.getStatus() != EContractStatus.DRAFT) {
-            throw new IllegalStateException("Chỉ xóa được hợp đồng ở trạng thái DRAFT. Hiện tại: " + c.getStatus());
+            throw new IllegalStateException("Only DRAFT contracts may be deleted. Current: " + c.getStatus());
         }
-        // Soft-delete: retain the row for legal audit (10-year retention under
-        // Law on Contracts + Law on Accounting). PII is purged from S3 but the
-        // structured record stays for auditors.
+
         purgePiiObjects(c);
         c.setDeletedAt(Instant.now());
         c.setDeletedBy(actorId);
@@ -629,7 +752,7 @@ public class EContractServiceImpl implements EContractService {
     @Transactional(readOnly = true)
     public boolean hasCccd(UUID contractId) {
         EContract c = findById(contractId);
-        return c.getCccdFrontKey() != null && c.getCccdBackKey() != null;
+        return c.getCccdVerifiedAt() != null;
     }
 
     @Override
@@ -652,10 +775,18 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional(readOnly = true)
+    @Cacheable(value = "user-contracts", key = "#keycloakId")
     public List<TenantEContractDto> getMyContracts(UUID keycloakId) {
         UUID userId = resolveInternalTenantId(keycloakId);
-        return contractRepo.findByUserIdOrderByCreatedAtDesc(userId)
-                .stream()
+        List<EContract> contracts = contractRepo.findByUserIdOrderByCreatedAtDesc(userId);
+        java.util.Map<UUID, String> pdfUrlByContract = contracts.parallelStream()
+                .collect(java.util.HashMap::new,
+                        (map, c) -> {
+                            String url = resolvePdfUrlForTenant(c);
+                            if (url != null) map.put(c.getId(), url);
+                        },
+                        java.util.HashMap::putAll);
+        return contracts.stream()
                 .map(c -> new TenantEContractDto(
                         c.getId(),
                         c.getName(),
@@ -663,7 +794,7 @@ public class EContractServiceImpl implements EContractService {
                         c.getStartAt(),
                         c.getEndAt(),
                         c.getStatus(),
-                        resolvePdfUrlForTenant(c),
+                        pdfUrlByContract.get(c.getId()),
                         c.getCreatedAt()))
                 .toList();
     }
@@ -763,23 +894,23 @@ public class EContractServiceImpl implements EContractService {
             OcrResult result = OcrResult.from(node);
 
             if (!node.path("isFrontSide").asBoolean(false))
-                throw new OcrValidationException(OcrValidationException.NOT_FRONT_SIDE, "Ảnh không phải mặt trước CCCD.");
+                throw new OcrValidationException(OcrValidationException.NOT_FRONT_SIDE, "Image is not the front of the Citizen ID.");
 
             if (result.identityNumber() == null)
-                throw new OcrValidationException(OcrValidationException.CANNOT_READ_ID, "Không đọc được số CCCD.");
+                throw new OcrValidationException(OcrValidationException.CANNOT_READ_ID, "Could not read the Citizen ID number.");
 
             if (expectedId != null && !expectedId.isBlank()
                     && !result.identityNumber().equals(expectedId))
-                throw new OcrValidationException(OcrValidationException.ID_MISMATCH, "Số CCCD không khớp hợp đồng.");
+                throw new OcrValidationException(OcrValidationException.ID_MISMATCH, "Citizen ID number does not match the contract.");
 
             if (result.fullName() != null && expectedName != null && !expectedName.isBlank()) {
                 String normOcr = norm(result.fullName());
                 String normExpected = norm(expectedName);
                 if (!normOcr.equals(normExpected) && !normExpected.contains(normOcr) && !normOcr.contains(normExpected)) {
-                    throw new OcrValidationException(OcrValidationException.NAME_MISMATCH, "Tên không khớp hợp đồng.");
+                    throw new OcrValidationException(OcrValidationException.NAME_MISMATCH, "Name does not match the contract.");
                 }
             } else if (result.fullName() == null) {
-                log.warn("[OCR] Không đọc được tên, bỏ qua kiểm tra tên. id={}", result.identityNumber());
+                log.warn("[OCR] Could not read name, skipping name check. id={}", result.identityNumber());
             }
 
             log.info("[OCR] Front OK id={} name={}", result.identityNumber(), result.fullName());
@@ -787,8 +918,78 @@ public class EContractServiceImpl implements EContractService {
         } catch (OcrValidationException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("[OCR] Front service lỗi, bỏ qua validate: {}", e.getMessage());
-            return null;
+            log.warn("[OCR] Front service unavailable contractId-upload: {}", e.getMessage());
+            throw new OcrValidationException(
+                    OcrValidationException.OCR_SERVICE_UNAVAILABLE,
+                    "Citizen ID OCR service is unavailable. Please try again later.");
+        }
+    }
+
+    private OcrResult callOcrCccdQuickVerify(
+            MultipartFile frontImage,
+            MultipartFile backImage,
+            String expectedId,
+            String expectedName) {
+        try {
+            JsonNode node = callCccdQuickVerify(frontImage, backImage);
+            JsonNode front = node.path("front");
+            JsonNode back = node.path("back");
+
+            if (!front.path("sideOk").asBoolean(false)) {
+                throw new OcrValidationException(
+                        OcrValidationException.NOT_FRONT_SIDE,
+                        "Image is not the front of the Citizen ID.");
+            }
+
+            if (!back.path("sideOk").asBoolean(false)) {
+                throw new OcrValidationException(
+                        OcrValidationException.NOT_BACK_SIDE,
+                        "Image is not the back of the Citizen ID.");
+            }
+
+            String identityNumber = normalizeIdentityNumber(tx(front, "identityNumber"));
+            if (identityNumber == null) {
+                throw new OcrValidationException(
+                        OcrValidationException.CANNOT_READ_ID,
+                        "Could not read the Citizen ID number on the front image.");
+            }
+
+            if (expectedId != null && !expectedId.isBlank()
+                    && !identityNumber.equals(normalizeIdentityNumber(expectedId))) {
+                throw new OcrValidationException(
+                        OcrValidationException.ID_MISMATCH,
+                        "Citizen ID number does not match the contract.");
+            }
+
+            String fullName = tx(front, "fullName");
+            if (fullName == null) {
+                throw new OcrValidationException(
+                        OcrValidationException.CANNOT_READ_NAME,
+                        "Could not read the tenant name on the front Citizen ID image.");
+            }
+
+            if (expectedName != null && !expectedName.isBlank()) {
+                String normOcr = norm(fullName);
+                String normExpected = norm(expectedName);
+                if (!normOcr.equals(normExpected)
+                        && !normExpected.contains(normOcr)
+                        && !normOcr.contains(normExpected)) {
+                    throw new OcrValidationException(
+                            OcrValidationException.NAME_MISMATCH,
+                            "Name does not match the contract.");
+                }
+            }
+
+            log.info("[OCR] CCCD quick verify OK id={} name={} totalMs={}",
+                    identityNumber, fullName, node.path("totalMs").asText("-"));
+            return new OcrResult(identityNumber, fullName, null, null, null, null, null, null);
+        } catch (OcrValidationException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[OCR] CCCD quick verify unavailable: {}", e.getMessage());
+            throw new OcrValidationException(
+                    OcrValidationException.OCR_SERVICE_UNAVAILABLE,
+                    "Citizen ID OCR service is unavailable. Please try again later.");
         }
     }
 
@@ -797,15 +998,18 @@ public class EContractServiceImpl implements EContractService {
             JsonNode node = callOcr(file, "/ocr/cccd/back");
 
             if (!node.path("isReadable").asBoolean(true))
-                throw new OcrValidationException(OcrValidationException.IMAGE_NOT_READABLE, "Ảnh mặt sau không rõ nét.");
+                throw new OcrValidationException(OcrValidationException.IMAGE_NOT_READABLE, "Back-side image is not clear.");
 
             if (!node.path("isBackSide").asBoolean(false))
-                throw new OcrValidationException(OcrValidationException.NOT_BACK_SIDE, "Ảnh không phải mặt sau CCCD.");
+                throw new OcrValidationException(OcrValidationException.NOT_BACK_SIDE, "Image is not the back of the Citizen ID.");
 
         } catch (OcrValidationException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("[OCR] Back service lỗi, bỏ qua validate: {}", e.getMessage());
+            log.warn("[OCR] Back service unavailable contractId-upload: {}", e.getMessage());
+            throw new OcrValidationException(
+                    OcrValidationException.OCR_SERVICE_UNAVAILABLE,
+                    "Citizen ID OCR service is unavailable. Please try again later.");
         }
     }
 
@@ -817,12 +1021,12 @@ public class EContractServiceImpl implements EContractService {
 
             if (result == null || result.getPassportNumber() == null)
                 throw new OcrValidationException(OcrValidationException.CANNOT_READ_PASSPORT,
-                        "Không đọc được số hộ chiếu từ MRZ. Vui lòng chụp rõ trang thông tin.");
+                        "Could not read passport number from MRZ. Please capture the info page clearly.");
 
             if (expectedPassportNumber != null && !expectedPassportNumber.isBlank()
                     && !result.getPassportNumber().equalsIgnoreCase(expectedPassportNumber)) {
                 throw new OcrValidationException(OcrValidationException.PASSPORT_MISMATCH,
-                        "Số hộ chiếu không khớp hợp đồng.");
+                        "Passport number does not match the contract.");
             }
 
             if (result.getExpiryDate() != null && !result.getExpiryDate().isBlank()) {
@@ -830,7 +1034,7 @@ public class EContractServiceImpl implements EContractService {
                     java.time.LocalDate expiry = java.time.LocalDate.parse(result.getExpiryDate());
                     if (expiry.isBefore(java.time.LocalDate.now())) {
                         throw new OcrValidationException(OcrValidationException.PASSPORT_EXPIRED,
-                                "Hộ chiếu đã hết hạn ngày " + expiry + ".");
+                                "Passport expired on " + expiry + ".");
                     }
                 } catch (java.time.format.DateTimeParseException ignored) {
                 }
@@ -845,7 +1049,7 @@ public class EContractServiceImpl implements EContractService {
                 String normExpected = norm(expectedName);
                 if (!normOcr.equals(normExpected) && !normExpected.contains(normOcr) && !normOcr.contains(normExpected)) {
                     throw new OcrValidationException(OcrValidationException.NAME_MISMATCH,
-                            "Tên trên hộ chiếu không khớp hợp đồng.");
+                            "Name on passport does not match the contract.");
                 }
             }
 
@@ -866,8 +1070,10 @@ public class EContractServiceImpl implements EContractService {
         } catch (OcrValidationException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("[OCR] Passport service lỗi, bỏ qua validate: {}", e.getMessage());
-            return null;
+            log.warn("[OCR] Passport service unavailable contractId-upload: {}", e.getMessage());
+            throw new OcrValidationException(
+                    OcrValidationException.OCR_SERVICE_UNAVAILABLE,
+                    "Passport OCR service is unavailable. Please try again later.");
         }
     }
 
@@ -878,30 +1084,59 @@ public class EContractServiceImpl implements EContractService {
         return (surname + " " + given).trim();
     }
 
+    private JsonNode callCccdQuickVerify(MultipartFile frontImage, MultipartFile backImage) throws Exception {
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("front", multipartResource(frontImage));
+        body.add("back", multipartResource(backImage));
+        String raw = RestClient.create().post()
+                .uri(ocrUrl + "/ocr/cccd/verify")
+                .contentType(MediaType.MULTIPART_FORM_DATA)
+                .body(body).retrieve().body(String.class);
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalStateException("OCR service returned an empty response");
+        }
+        return json.readTree(raw);
+    }
+
     private JsonNode callOcr(MultipartFile file, String path) throws Exception {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-        body.add("image", new ByteArrayResource(file.getBytes()) {
-            @Override
-            public String getFilename() {
-                return file.getOriginalFilename();
-            }
-        });
+        body.add("image", multipartResource(file));
         String raw = RestClient.create().post()
                 .uri(ocrUrl + path)
                 .contentType(MediaType.MULTIPART_FORM_DATA)
                 .body(body).retrieve().body(String.class);
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalStateException("OCR service returned an empty response");
+        }
         return json.readTree(raw);
+    }
+
+    private ByteArrayResource multipartResource(MultipartFile file) throws IOException {
+        return new ByteArrayResource(file.getBytes()) {
+            @Override
+            public String getFilename() {
+                return file.getOriginalFilename();
+            }
+        };
+    }
+
+    private String normalizeIdentityNumber(String value) {
+        if (value == null) {
+            return null;
+        }
+        String digits = value.replaceAll("\\D", "");
+        return digits.isBlank() ? null : digits;
     }
 
     private void validateImage(MultipartFile f, String side) {
         if (f == null || f.isEmpty())
-            throw new IllegalArgumentException("Ảnh " + side + " không được để trống.");
+            throw new IllegalArgumentException("Image " + side + " must not be blank.");
         if (f.getContentType() == null || !f.getContentType().startsWith("image/"))
-            throw new IllegalArgumentException("File " + side + " phải là ảnh.");
+            throw new IllegalArgumentException("File " + side + " must be an image.");
         if (f.getSize() < 50 * 1024)
-            throw new IllegalArgumentException("Ảnh " + side + " quá nhỏ (< 50KB).");
+            throw new IllegalArgumentException("Image " + side + " is too small (< 50KB).");
         if (f.getSize() > 10 * 1024 * 1024)
-            throw new IllegalArgumentException("Ảnh " + side + " quá lớn (> 10MB).");
+            throw new IllegalArgumentException("Image " + side + " is too large (> 10MB).");
     }
 
     private String norm(String s) {
@@ -915,6 +1150,19 @@ public class EContractServiceImpl implements EContractService {
                 .replaceAll("[^a-z0-9\\s]", "")
                 .replaceAll("\\s+", " ")
                 .trim();
+    }
+
+    private static String slugifyName(String s) {
+        if (s == null || s.isBlank()) return "Unknown";
+        String replaced = s.trim()
+                .replace("đ", "d").replace("Đ", "D")
+                .replace("ư", "u").replace("Ư", "U")
+                .replace("ơ", "o").replace("Ơ", "O");
+        String nfd = Normalizer.normalize(replaced, Normalizer.Form.NFD);
+        String ascii = nfd.replaceAll("\\p{InCombiningDiacriticalMarks}+", "");
+        String slug = ascii.replaceAll("[^A-Za-z0-9]+", "_")
+                .replaceAll("^_+|_+$", "");
+        return slug.isEmpty() ? "Unknown" : slug;
     }
 
     private void updateProcess(String token, String documentId, String userFirst, String userSecond,
@@ -932,7 +1180,7 @@ public class EContractServiceImpl implements EContractService {
                         new ArrayList<>(List.of(3110)),
                         new ArrayList<>(List.of(UUID.fromString("0aa2afc9-39c5-4652-baec-08ddc28cdda2")))));
         if (r == null || r.getData() == null)
-            throw new IllegalStateException("Tạo user VNPT thất bại: "
+            throw new IllegalStateException("Failed to create VNPT user: "
                     + (r != null ? r.getMessage() : "null"));
     }
 
@@ -940,20 +1188,28 @@ public class EContractServiceImpl implements EContractService {
                                         CreateEContractRequest req, HouseResponse house) {
         LandlordProfile lp = landlordRepo.findByUserId(actorId)
                 .orElseThrow(() -> new IllegalStateException(
-                        "Landlord chưa cập nhật thông tin. " + "Vui lòng cập nhật tại PUT /api/econtracts/landlord-profiles/me."));
+                        "Landlord profile not yet updated. " + "Please update via PUT /api/econtracts/landlord-profiles/me."));
 
         Map<String, Object> meters = req.meterReadingsStart() != null
                 ? req.meterReadingsStart().asMap() : Map.of();
 
+        long draftTimestamp = System.currentTimeMillis();
+
+        String draftDocumentNo = "EC_" + draftTimestamp;
         ContractHtmlBuilder.BuildInput input = new ContractHtmlBuilder.BuildInput(
                 req, lp, house.getAddress(),
-                house.getAreaM2(),                // empty "" if house profile hasn't filled it
-                house.getStructure(),             // empty "" if not set
-                house.getLandCertNumber(),        // empty "" if not set
-                house.getLandCertIssueDate(),     // empty "" if not set
-                house.getLandCertIssuer(),        // empty "" if not set
+                house.getAreaM2(),
+                house.getStructure(),
+                house.getLandCertNumber(),
+                house.getLandCertIssueDate(),
+                house.getLandCertIssuer(),
                 buildAssetTable(req.houseId()),
-                meters, req.contractLanguageOrDefault(), null);
+                "",
+                "",
+                "",
+                meters, req.contractLanguageOrDefault(), null,
+                replacementContextHolder.get(),
+                draftDocumentNo);
 
         String html = htmlBuilder.build(input);
 
@@ -971,15 +1227,20 @@ public class EContractServiceImpl implements EContractService {
                 .userId(tenantId).houseId(req.houseId())
                 .regionId(regionId)
                 .startAt(req.startDate()).endAt(req.endDate())
-                .name("EContract_" + req.name().trim() + "_" + System.currentTimeMillis())
+                .name("EContract_" + slugifyName(req.name()) + "_" + draftTimestamp)
+                .documentNo("EC_" + draftTimestamp)
                 .html(html)
                 .status(EContractStatus.DRAFT)
                 .rentAmount(req.rentAmount()).depositAmount(req.depositAmount())
+                .depositStatus(req.depositAmount() != null && req.depositAmount() > 0
+                        ? DepositStatus.UNPAID
+                        : DepositStatus.PAID)
+                .transferredDepositAmount(0L)
                 .payDate(req.payDate()).lateDays(req.lateDaysOrDefault())
                 .latePenaltyPercent(req.latePenaltyPercentOrDefault())
                 .depositRefundDays(req.depositRefundDaysOrDefault())
                 .renewNoticeDays(req.renewNoticeDaysOrDefault())
-                .handoverDate(req.handoverDate())
+                .handoverDate(req.effectiveHandoverDate())
                 .cccdNumber(req.identityNumber())
                 .tenantType(req.tenantTypeOrDefault())
                 .contractLanguage(req.contractLanguageOrDefault())
@@ -1047,7 +1308,7 @@ public class EContractServiceImpl implements EContractService {
             b.run();
             return out.toByteArray();
         } catch (Exception e) {
-            throw new IllegalStateException("Render PDF thất bại: " + e.getMessage(), e);
+            throw new IllegalStateException("PDF render failed: " + e.getMessage(), e);
         }
     }
 
@@ -1070,6 +1331,13 @@ public class EContractServiceImpl implements EContractService {
     }
 
     private String buildAssetTable(UUID houseId) {
+        java.util.LinkedHashMap<String, Integer> grouped = new java.util.LinkedHashMap<>();
+        for (AssetItemDto item : assetGrpc.getAssetItemsByHouseId(houseId)) {
+            String name = item.getDisplayName() == null ? "" : item.getDisplayName().trim();
+            if (name.isEmpty()) continue;
+            grouped.merge(name, 1, Integer::sum);
+        }
+
         StringBuilder sb = new StringBuilder();
         sb.append("<table style=\"width:100%;border-collapse:collapse;\">")
                 .append("<thead><tr>")
@@ -1078,12 +1346,13 @@ public class EContractServiceImpl implements EContractService {
                 .append("<th style=\"border:1px solid #000;padding:6px;width:15%;\">Số lượng</th>")
                 .append("</tr></thead><tbody>");
         int i = 1;
-        for (AssetItemDto item : assetGrpc.getAssetItemsByHouseId(houseId)) {
+        for (java.util.Map.Entry<String, Integer> entry : grouped.entrySet()) {
             sb.append("<tr>")
                     .append("<td style=\"border:1px solid #000;padding:6px;text-align:right;\">").append(i++).append("</td>")
                     .append("<td style=\"border:1px solid #000;padding:6px;\">")
-                    .append(HtmlUtils.htmlEscape(item.getDisplayName())).append("</td>")
-                    .append("<td style=\"border:1px solid #000;padding:6px;text-align:right;\">1</td>")
+                    .append(HtmlUtils.htmlEscape(entry.getKey())).append("</td>")
+                    .append("<td style=\"border:1px solid #000;padding:6px;text-align:right;\">")
+                    .append(entry.getValue()).append("</td>")
                     .append("</tr>");
         }
         sb.append("</tbody></table>");
@@ -1211,6 +1480,16 @@ public class EContractServiceImpl implements EContractService {
     private ProcessLoginInfoDto parseProcessLogin(String body) {
         try {
             JsonNode root = json.readTree(body);
+            if (root.has("success") && !root.get("success").asBoolean(true)) {
+                JsonNode messages = root.get("messages");
+                String message = root.hasNonNull("message") ? root.get("message").asText() : null;
+                if ((message == null || message.isBlank()) && messages != null && messages.isArray() && !messages.isEmpty()) {
+                    message = messages.get(0).asText();
+                }
+                throw new IllegalStateException(message == null || message.isBlank()
+                        ? "VNPT rejected process code"
+                        : message);
+            }
             JsonNode d = root.has("data") && root.get("data").isObject() ? root.get("data") : root;
             String token = null;
             JsonNode tn = d.get("token");
@@ -1255,6 +1534,21 @@ public class EContractServiceImpl implements EContractService {
                 log.warn("[EContract] Cannot fetch tenant userId={}: {}", contract.getUserId(), e.getMessage());
             }
 
+            Instant depositDueAt = null;
+            Long billableDeposit = billableDepositAmount(contract);
+            if (billableDeposit != null && billableDeposit > 0) {
+                int waitDays = landlordRepo.findByUserId(contract.getCreatedBy())
+                        .map(LandlordProfile::getDepositWaitDays)
+                        .filter(d -> d != null && d > 0)
+                        .orElse(3);
+                depositDueAt = Instant.now().plus(waitDays, ChronoUnit.DAYS);
+                contract.setDepositDueAt(depositDueAt);
+                contractRepo.save(contract);
+            }
+
+            Long originalDeposit = contract.getDepositAmount();
+            Long transferredDeposit = contract.getTransferredDepositAmount();
+            UUID relocationSource = contract.getRelocationSourceContractId();
             ContractCompletedEvent event = ContractCompletedEvent.builder()
                     .contractId(contract.getId())
                     .tenantId(contract.getUserId())
@@ -1262,18 +1556,19 @@ public class EContractServiceImpl implements EContractService {
                     .isNewAccount(isNewAccount)
                     .houseId(contract.getHouseId())
                     .landlordId(contract.getCreatedBy())
-                    .depositAmount(contract.getDepositAmount())
+                    .depositAmount(billableDeposit)
+                    .originalDepositAmount(originalDeposit)
+                    .transferredDepositAmount(transferredDeposit)
+                    .relocationSourceContractId(relocationSource)
                     .rentAmount(contract.getRentAmount())
                     .payDate(contract.getPayDate())
                     .startAt(contract.getStartAt())
                     .endAt(contract.getEndAt())
                     .completedAt(Instant.now())
+                    .depositDueAt(depositDueAt)
                     .signedPdfUrl(signedPdfUrl)
                     .build();
 
-            // Outbox: contract-completed drives DEPOSIT invoice creation in Payment
-            // and welcome email in Notification. Losing this event = tenant stuck
-            // with signed contract but no invoice to pay. Must be durable.
             String completedMsgId = UUID.randomUUID().toString();
             outboxPublisher.enqueue(
                     "contract-completed-topic",
@@ -1281,9 +1576,6 @@ public class EContractServiceImpl implements EContractService {
                     event,
                     completedMsgId);
 
-            // Outbox: job.created schedules the CHECK_IN inspection; also critical
-            // because the inspection is a hand-off moment between contract lifecycle
-            // and property ops.
             String jobMsgId = UUID.randomUUID().toString();
             outboxPublisher.enqueue(
                     "job.created",
@@ -1304,9 +1596,87 @@ public class EContractServiceImpl implements EContractService {
                 log.info("[Renewal] Auto-completed renewalRequestId={} newContractId={}",
                         r.getId(), contract.getId());
             });
+
+            completeRelocationReplacement(contract);
         } catch (Exception e) {
             log.error("[EContract] sendContractCompletedEvent failed contractId={}: {}", contract.getId(), e.getMessage(), e);
         }
+    }
+
+    private Long billableDepositAmount(EContract contract) {
+        long deposit = contract.getDepositAmount() == null ? 0L : contract.getDepositAmount();
+        long transferred = contract.getTransferredDepositAmount() == null ? 0L : contract.getTransferredDepositAmount();
+        return Math.max(0L, deposit - transferred);
+    }
+
+    private DepositStatus resolveCompletedDepositStatus(EContract contract) {
+        long deposit = contract.getDepositAmount() == null ? 0L : contract.getDepositAmount();
+        long transferred = contract.getTransferredDepositAmount() == null ? 0L : contract.getTransferredDepositAmount();
+        if (deposit == 0L) {
+            return DepositStatus.PAID;
+        }
+        if (contract.getRelocationSourceContractId() != null && transferred >= deposit) {
+            return DepositStatus.TRANSFERRED;
+        }
+        if (contract.getRelocationSourceContractId() != null && transferred > 0L) {
+            return DepositStatus.PARTIALLY_TRANSFERRED;
+        }
+        return DepositStatus.PENDING;
+    }
+
+    private void completeRelocationReplacement(EContract replacement) {
+        if (replacement.getRelocationSourceContractId() == null) {
+            return;
+        }
+
+        relocationRequestRepo.findByNewContractId(replacement.getId()).ifPresent(relocation -> {
+            if (relocation.getStatus() == RelocationRequestStatus.COMPLETED) {
+                return;
+            }
+
+            EContract old = contractRepo.findById(replacement.getRelocationSourceContractId())
+                    .orElseThrow(() -> new NotFoundException("Source relocation contract not found: "
+                            + replacement.getRelocationSourceContractId()));
+
+            if (old.getReplacedByContractId() != null) {
+                relocation.setStatus(RelocationRequestStatus.COMPLETED);
+                relocation.setCompletedAt(Instant.now());
+                relocationRequestRepo.save(relocation);
+                return;
+            }
+
+            DepositHandling handling = relocation.getDepositHandling();
+            if (handling == DepositHandling.TRANSFER_TO_REPLACEMENT) {
+                old.setDepositStatus(DepositStatus.TRANSFERRED);
+            } else if (handling == DepositHandling.PARTIAL_TRANSFER) {
+                old.setDepositStatus(DepositStatus.PARTIALLY_TRANSFERRED);
+            } else if (handling == DepositHandling.FORFEIT) {
+                old.setDepositStatus(DepositStatus.FORFEITED);
+            } else if (handling == DepositHandling.CANCEL_PENDING_DEPOSIT) {
+                old.setDepositStatus(DepositStatus.UNPAID);
+            }
+
+            EContractStatus replacedStatus = isPaidDeposit(relocation.getDepositStatusSnapshot())
+                    ? EContractStatus.REPLACED_AFTER_DEPOSIT
+                    : EContractStatus.REPLACED_BEFORE_DEPOSIT;
+            old.getStatus().validateTransition(replacedStatus);
+            old.setStatus(replacedStatus);
+            old.setReplacedByContractId(replacement.getId());
+            contractRepo.save(old);
+
+            relocation.setStatus(RelocationRequestStatus.COMPLETED);
+            relocation.setCompletedAt(Instant.now());
+            relocationRequestRepo.save(relocation);
+
+            log.info("[Relocation] COMPLETED requestId={} oldContractId={} newContractId={}",
+                    relocation.getId(), old.getId(), replacement.getId());
+        });
+    }
+
+    private boolean isPaidDeposit(DepositStatus status) {
+        return status == DepositStatus.PAID
+                || status == DepositStatus.TRANSFERRED
+                || status == DepositStatus.PARTIALLY_TRANSFERRED;
     }
 
     private void sendContractCancelledByTenantEvent(EContract contract) {
@@ -1354,7 +1724,6 @@ public class EContractServiceImpl implements EContractService {
                     .documentId(contract.getDocumentId())
                     .build();
 
-            // Outbox: landlord must know tenant confirmed. Losing = tenant sits waiting.
             outboxPublisher.enqueue(
                     "contract.ready-for-landlord-signature",
                     contract.getId().toString(),
@@ -1437,12 +1806,6 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
-    /**
-     * Role + region-aware access scope for contract queries.
-     * LANDLORD sees everything. MANAGER sees contracts whose house is in their managed
-     * regions (resolved via house-service gRPC). TENANT sees only their own. STAFF is
-     * excluded from contract listing (they work with issue tickets instead).
-     */
     private record ContractScope(
             Scope kind,
             UUID actorId,
@@ -1464,9 +1827,9 @@ public class EContractServiceImpl implements EContractService {
         if (auth == null || auth.getAuthorities() == null) {
             return new ContractScope(ContractScope.Scope.DENIED, null, java.util.Set.of());
         }
-        UUID actorId;
+        UUID keycloakId;
         try {
-            actorId = UUID.fromString(auth.getName());
+            keycloakId = UUID.fromString(auth.getName());
         } catch (IllegalArgumentException ex) {
             return new ContractScope(ContractScope.Scope.DENIED, null, java.util.Set.of());
         }
@@ -1476,22 +1839,31 @@ public class EContractServiceImpl implements EContractService {
         boolean isTenant = hasAuthority(auth, "ROLE_TENANT");
 
         if (isLandlord) {
-            return new ContractScope(ContractScope.Scope.LANDLORD_ALL, actorId, java.util.Set.of());
+            return new ContractScope(ContractScope.Scope.LANDLORD_ALL, keycloakId, java.util.Set.of());
         }
+
+        UUID internalId;
+        try {
+            internalId = resolveInternalTenantId(keycloakId);
+        } catch (Exception ex) {
+            log.warn("[Scope] Failed to resolve internal user id for keycloakId={}: {}", keycloakId, ex.getMessage());
+            return new ContractScope(ContractScope.Scope.DENIED, keycloakId, java.util.Set.of());
+        }
+
         if (isManager) {
             java.util.Set<UUID> managed;
             try {
-                managed = ((HouseGrpcClient) houseGrpc).getManagedHouseIds(actorId);
+                managed = ((HouseGrpcClient) houseGrpc).getManagedHouseIds(internalId);
             } catch (Exception ex) {
-                log.warn("[Scope] Failed to resolve managed houses for managerId={}: {}", actorId, ex.getMessage());
+                log.warn("[Scope] Failed to resolve managed houses for managerId={}: {}", internalId, ex.getMessage());
                 managed = java.util.Set.of();
             }
-            return new ContractScope(ContractScope.Scope.MANAGER_REGION, actorId, managed);
+            return new ContractScope(ContractScope.Scope.MANAGER_REGION, internalId, managed);
         }
         if (isTenant) {
-            return new ContractScope(ContractScope.Scope.TENANT_OWN, actorId, java.util.Set.of());
+            return new ContractScope(ContractScope.Scope.TENANT_OWN, internalId, java.util.Set.of());
         }
-        return new ContractScope(ContractScope.Scope.DENIED, actorId, java.util.Set.of());
+        return new ContractScope(ContractScope.Scope.DENIED, internalId, java.util.Set.of());
     }
 
     private static boolean hasAuthority(org.springframework.security.core.Authentication auth, String role) {
@@ -1501,18 +1873,18 @@ public class EContractServiceImpl implements EContractService {
     private void requireAccess(EContract contract, org.springframework.security.core.Authentication auth) {
         ContractScope scope = resolveScope(auth);
         switch (scope.kind()) {
-            case LANDLORD_ALL -> { /* ok */ }
+            case LANDLORD_ALL -> {  }
             case MANAGER_REGION -> {
                 if (!scope.managedHouseIds().contains(contract.getHouseId())) {
-                    throw new AccessDeniedException("Contract thuộc region bạn không quản lý");
+                    throw new AccessDeniedException("Contract belongs to a region you do not manage");
                 }
             }
             case TENANT_OWN -> {
                 if (!contract.getUserId().equals(scope.actorId())) {
-                    throw new AccessDeniedException("Chỉ xem được hợp đồng của chính mình");
+                    throw new AccessDeniedException("You may only view your own contracts");
                 }
             }
-            case DENIED -> throw new AccessDeniedException("Không có quyền truy cập hợp đồng");
+            case DENIED -> throw new AccessDeniedException("No permission to access this contract");
         }
     }
 
@@ -1533,18 +1905,16 @@ public class EContractServiceImpl implements EContractService {
         UUID houseIdFilter = houseIdRaw != null ? UUID.fromString(houseIdRaw) : null;
 
         var specBuilder = SpecificationBuilder.<EContract>create()
-                .keywordLike(request.keyword(), "name", "tenantName")
+                .keywordLike(request.keyword(), "name", "tenantName", "documentNo", "documentId")
                 .enumEq("status", statusFilter)
                 .enumInRaw("status", statusesRaw, EContractStatus.class)
                 .eq("houseId", houseIdFilter);
 
-        // Role-scoped filter — keep at spec layer so Postgres does the filtering,
-        // not Java (avoids loading and discarding other tenants' contracts).
         switch (scope.kind()) {
-            case LANDLORD_ALL -> { /* no extra filter */ }
+            case LANDLORD_ALL -> {  }
             case MANAGER_REGION -> {
                 if (scope.managedHouseIds().isEmpty()) {
-                    // No managed houses → no visible contracts. Return empty fast.
+
                     return PageResponse.<EContractDto>empty();
                 }
                 specBuilder.in("houseId", scope.managedHouseIds());
@@ -1588,23 +1958,6 @@ public class EContractServiceImpl implements EContractService {
         return v != null && !v.isBlank() ? v : fb;
     }
 
-    /**
-     * Deletes all PII-bearing S3 objects tied to this contract and clears the
-     * corresponding entity fields. Called on any terminal transition
-     * (cancel/delete/terminate) to comply with Nghị định 13/2023/NĐ-CP
-     * (data minimization — don't retain identity documents longer than needed).
-     *
-     * Idempotent: safe to call on a contract with null keys. Errors are logged
-     * but never rethrown — we prioritize recording the state change over the
-     * cleanup (which S3 lifecycle policy can sweep as a fallback).
-     */
-    /**
-     * Idempotent VNPT document creation. If the contract already has a documentId
-     * from a previous attempt (e.g. sendProcess failed last time and status
-     * reverted), we verify the doc still exists at VNPT and reuse it. Only create
-     * a new doc if there's no prior one — this avoids the VNPT orphan / double-billing
-     * problem since VNPT does not expose a delete API.
-     */
     private VnptDocumentDto ensureVnptDocument(EContract c, byte[] finalPdf, String token) {
         if (c.getDocumentId() != null && !c.getDocumentId().isBlank()) {
             try {
@@ -1626,7 +1979,7 @@ public class EContractServiceImpl implements EContractService {
                 new FileInfoDto(null, finalPdf, docNo + ".pdf"),
                 "Rental EContract", "Rental EContract", 3059, 3110, docNo));
         if (createResult == null || createResult.getData() == null) {
-            throw new IllegalStateException("VNPT tạo document thất bại: "
+            throw new IllegalStateException("VNPT document creation failed: "
                     + (createResult != null ? createResult.getMessage() : "null"));
         }
         return createResult.getData();
