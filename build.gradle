@@ -20,6 +20,18 @@ configurations {
         extendsFrom annotationProcessor
     }
 }
+configurations.configureEach {
+    resolutionStrategy {
+        force 'com.google.protobuf:protobuf-java:4.34.0'
+        force 'com.google.protobuf:protobuf-java-util:4.34.0'
+        eachDependency { details ->
+            if (details.requested.group == 'com.google.protobuf' && (details.requested.name == 'protobuf-java' || details.requested.name == 'protobuf-java-util')) {
+                details.useVersion '4.34.0'
+                details.because 'Keep protobuf runtime aligned with generated proto-common classes'
+            }
+        }
+    }
+}
 
 repositories {
     mavenCentral()
@@ -27,6 +39,14 @@ repositories {
     maven {
         name = "GitHubPackages"
         url = uri("https://maven.pkg.github.com/Management-System-for-Rental-SEP490/ISUMS_Proto-common_gRPC-Maven-local")
+        credentials {
+            username = System.getenv("GITHUB_ACTOR") ?: ""
+            password = System.getenv("GITHUB_TOKEN") ?: ""
+        }
+    }
+    maven {
+        name = "GitHubPackagesObservability"
+        url = uri("https://maven.pkg.github.com/Management-System-for-Rental-SEP490/ISUMS_Observability-Common")
         credentials {
             username = System.getenv("GITHUB_ACTOR") ?: ""
             password = System.getenv("GITHUB_TOKEN") ?: ""
@@ -46,7 +66,13 @@ ext {
 }
 
 dependencies {
+    implementation 'net.logstash.logback:logstash-logback-encoder:8.1'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+    implementation 'com.isums:isums-observability-common:1.0-SNAPSHOT'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
     implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation 'org.springframework.boot:spring-boot-starter-cache'
@@ -58,7 +84,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-kafka'
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'javax.annotation:javax.annotation-api:1.3.2'
-    implementation 'com.google.protobuf:protobuf-java:4.34.0-RC2'
+    implementation 'com.google.protobuf:protobuf-java:4.34.0'
     implementation "org.springframework.boot:spring-boot-starter-validation"
     implementation 'org.springframework.grpc:spring-grpc-server-web-spring-boot-starter'
     implementation "org.springframework.grpc:spring-grpc-client-spring-boot-starter"
@@ -72,6 +98,7 @@ dependencies {
     implementation "com.isums:proto-common:1.0-SNAPSHOT"
     implementation 'org.keycloak:keycloak-admin-client:26.0.8'
     implementation 'software.amazon.awssdk:s3:2.42.19'
+    implementation 'software.amazon.awssdk:translate:2.42.19'
     implementation 'org.springframework.boot:spring-boot-starter-websocket'
     annotationProcessor "org.mapstruct:mapstruct-processor:1.6.3"
     testAnnotationProcessor "org.mapstruct:mapstruct-processor:1.6.3"
@@ -113,4 +140,19 @@ dependencyManagement {
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+// Force UTF-8 across all JVM toolchains. Without this, Windows JDKs default
+// to the platform encoding (CP1252 in vi-VN locale) and source files
+// containing Vietnamese / Japanese literals get mangled at compile time —
+// the resulting .class file then serves `?` / U+FFFD to clients regardless
+// of the HTTP charset header. Applies to compile, javadoc, and test tasks.
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+tasks.withType(Javadoc).configureEach {
+    options.encoding = 'UTF-8'
+}
+tasks.withType(Test).configureEach {
+    systemProperty 'file.encoding', 'UTF-8'
 }

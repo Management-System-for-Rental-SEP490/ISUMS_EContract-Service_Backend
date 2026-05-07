@@ -14,11 +14,15 @@ public record ContractCompletedEvent(
         UUID houseId,
         UUID landlordId,
         Long depositAmount,
+        Long originalDepositAmount,
+        Long transferredDepositAmount,
+        UUID relocationSourceContractId,
         Long rentAmount,
         Integer payDate,
         Instant startAt,
         Instant endAt,
         Instant completedAt,
+        Instant depositDueAt,
         String signedPdfUrl
 ) {
 }

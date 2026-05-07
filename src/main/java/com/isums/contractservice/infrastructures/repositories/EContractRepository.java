@@ -1,14 +1,19 @@
 package com.isums.contractservice.infrastructures.repositories;
 
 import com.isums.contractservice.domains.entities.EContract;
+import com.isums.contractservice.domains.enums.EContractStatus;
 import org.jspecify.annotations.NonNull;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 public interface EContractRepository extends JpaRepository<EContract, UUID>, JpaSpecificationExecutor<EContract> {
@@ -17,6 +22,10 @@ public interface EContractRepository extends JpaRepository<EContract, UUID>, Jpa
 
     Optional<EContract> findByDocumentNo(String documentNo);
 
+    Optional<EContract> findByDocumentIdIgnoreCase(String documentId);
+
+    Optional<EContract> findByDocumentNoIgnoreCase(String documentNo);
+
     List<EContract> findAllByOrderByCreatedAtAsc();
 
     Optional<EContract> findTopByUserIdOrderByCreatedAtDesc(UUID userId);
@@ -24,4 +33,125 @@ public interface EContractRepository extends JpaRepository<EContract, UUID>, Jpa
     Optional<EContract> findByHouseIdAndUserId(UUID houseId, UUID userId);
 
     List<EContract> findByUserIdOrderByCreatedAtDesc(UUID userId);
+
+    List<EContract> findByStatusAndEndAtBefore(EContractStatus status, Instant endAt);
+
+    List<EContract> findByStatusAndEndAtBetween(EContractStatus status, Instant from, Instant to);
+
+    List<EContract> findByStatusInAndEndAtBefore(List<EContractStatus> statuses, Instant endAt);
+
+    @Query("""
+            SELECT e FROM EContract e
+            WHERE e.status = com.isums.contractservice.domains.enums.EContractStatus.COMPLETED
+              AND e.depositStatus = com.isums.contractservice.domains.enums.DepositStatus.UNPAID
+              AND e.depositDueAt IS NOT NULL
+              AND e.depositDueAt < :cutoff
+            """)
+    List<EContract> findExpiredDepositContracts(Instant cutoff);
+
+    List<EContract> findByStatusInAndEndAtBetween(List<EContractStatus> statuses, Instant from, Instant to);
+
+    @Query("SELECT e.status, COUNT(e) FROM EContract e WHERE e.userId = :userId GROUP BY e.status")
+    List<Object[]> countByStatusGrouped(@Param("userId") UUID userId);
+
+    @Query("SELECT e.status, COUNT(e) FROM EContract e GROUP BY e.status")
+    List<Object[]> countByStatusGroupedAll();
+
+    @Query(value = """
+            SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,
+                   COUNT(*) AS count
+            FROM econtracts
+            WHERE user_id = :userId AND status <> 'DELETED'
+              AND created_at >= :fromDate AND created_at < :toDate
+            GROUP BY DATE_TRUNC('month', created_at)
+            ORDER BY DATE_TRUNC('month', created_at)
+            """, nativeQuery = true)
+    List<Object[]> countByMonthInRange(@Param("userId") UUID userId,
+                                       @Param("fromDate") Instant fromDate,
+                                       @Param("toDate") Instant toDate);
+
+    @Query(value = """
+            SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,
+                   COUNT(*) AS count
+            FROM econtracts
+            WHERE status <> 'DELETED'
+              AND created_at >= :fromDate AND created_at < :toDate
+            GROUP BY DATE_TRUNC('month', created_at)
+            ORDER BY DATE_TRUNC('month', created_at)
+            """, nativeQuery = true)
+    List<Object[]> countByMonthInRangeAll(@Param("fromDate") Instant fromDate,
+                                          @Param("toDate") Instant toDate);
+
+    @Query("""
+            SELECT COUNT(DISTINCT e.houseId) FROM EContract e
+            WHERE e.userId = :userId
+              AND ((e.status = :completed AND e.endAt BETWEEN :now AND :deadline)
+                   OR e.status IN :terminatingStatuses)
+            """)
+    long countHousesExpiringSoon(@Param("userId") UUID userId,
+                                 @Param("completed") EContractStatus completed,
+                                 @Param("now") Instant now,
+                                 @Param("deadline") Instant deadline,
+                                 @Param("terminatingStatuses") List<EContractStatus> terminatingStatuses);
+
+    @Query("""
+            SELECT COUNT(DISTINCT e.houseId) FROM EContract e
+            WHERE (e.status = :completed AND e.endAt BETWEEN :now AND :deadline)
+               OR e.status IN :terminatingStatuses
+            """)
+    long countHousesExpiringSoonAll(@Param("completed") EContractStatus completed,
+                                    @Param("now") Instant now,
+                                    @Param("deadline") Instant deadline,
+                                    @Param("terminatingStatuses") List<EContractStatus> terminatingStatuses);
+
+    @Query("SELECT COUNT(DISTINCT e.houseId) FROM EContract e")
+    long countDistinctHouses();
+
+    @Query("SELECT COUNT(DISTINCT e.houseId) FROM EContract e WHERE e.status = :status")
+    long countDistinctHousesByStatus(@Param("status") EContractStatus status);
+
+    @Query("SELECT e.status, COUNT(e) FROM EContract e WHERE e.houseId IN :houseIds GROUP BY e.status")
+    List<Object[]> countByStatusGroupedByHouseIds(@Param("houseIds") List<UUID> houseIds);
+
+    @Query("""
+            SELECT DISTINCT e.houseId FROM EContract e
+            WHERE e.status IN :statuses
+            """)
+    Set<UUID> findHouseIdsByStatusIn(@Param("statuses") List<EContractStatus> statuses);
+
+    @Query("""
+            SELECT e FROM EContract e
+            WHERE e.status = :status
+              AND e.endAt BETWEEN :from AND :to
+              AND e.bookableWindowNotifiedAt IS NULL
+            """)
+    List<EContract> findUnnotifiedBookableWindowContracts(
+            @Param("status") EContractStatus status,
+            @Param("from") Instant from,
+            @Param("to") Instant to);
+
+    @Query(value = """
+            SELECT TO_CHAR(DATE_TRUNC('month', created_at), 'YYYY-MM') AS month,
+                   COUNT(*) AS count
+            FROM econtracts
+            WHERE house_id IN :houseIds AND status <> 'DELETED'
+              AND created_at >= :fromDate AND created_at < :toDate
+            GROUP BY DATE_TRUNC('month', created_at)
+            ORDER BY DATE_TRUNC('month', created_at)
+            """, nativeQuery = true)
+    List<Object[]> countByMonthInRangeByHouseIds(@Param("houseIds") List<UUID> houseIds,
+                                                  @Param("fromDate") Instant fromDate,
+                                                  @Param("toDate") Instant toDate);
+
+    @Query("""
+            SELECT COUNT(DISTINCT e.houseId) FROM EContract e
+            WHERE e.houseId IN :houseIds
+              AND ((e.status = :completed AND e.endAt BETWEEN :now AND :deadline)
+                   OR e.status IN :terminatingStatuses)
+            """)
+    long countHousesExpiringSoonByHouseIds(@Param("houseIds") List<UUID> houseIds,
+                                           @Param("completed") EContractStatus completed,
+                                           @Param("now") Instant now,
+                                           @Param("deadline") Instant deadline,
+                                           @Param("terminatingStatuses") List<EContractStatus> terminatingStatuses);
 }

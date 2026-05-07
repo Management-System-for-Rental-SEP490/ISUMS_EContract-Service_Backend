@@ -7,8 +7,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.font.PDType1Font;
-import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.font.PDType0Font;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -61,7 +60,25 @@ public class S3Service {
             log.info("[S3] CCCD uploaded key={}", key);
             return key;
         } catch (IOException e) {
-            throw new RuntimeException("Upload CCCD thất bại: " + e.getMessage(), e);
+            throw new RuntimeException("Citizen ID upload failed: " + e.getMessage(), e);
+        }
+    }
+
+    public String uploadPassportImage(MultipartFile file, UUID contractId) {
+        try {
+            String ext = extension(file.getOriginalFilename());
+            String key = "passport/" + contractId + "/photo-page." + ext;
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(bucket).key(key)
+                            .contentType(file.getContentType())
+                            .contentLength(file.getSize())
+                            .build(),
+                    RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+            log.info("[S3] Passport uploaded key={}", key);
+            return key;
+        } catch (IOException e) {
+            throw new RuntimeException("Passport upload failed: " + e.getMessage(), e);
         }
     }
 
@@ -76,6 +93,42 @@ public class S3Service {
                 RequestBody.fromBytes(pdfBytes));
         log.info("[S3] Contract PDF uploaded key={}", key);
         return key;
+    }
+
+    public String uploadRelocationEvidence(MultipartFile file, UUID contractId, UUID actorId) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Evidence file is empty");
+        }
+        long maxBytes = 10L * 1024 * 1024;
+        if (file.getSize() > maxBytes) {
+            throw new IllegalArgumentException("Evidence file must not exceed 10MB");
+        }
+
+        String contentType = file.getContentType() != null ? file.getContentType() : "application/octet-stream";
+        if (!contentType.startsWith("image/")) {
+            throw new IllegalArgumentException("Evidence file must be an image");
+        }
+
+        try {
+            String ext = extension(file.getOriginalFilename());
+            String key = "relocation-evidence/" + contractId + "/"
+                    + System.currentTimeMillis() + "-" + UUID.randomUUID() + "." + ext;
+            s3Client.putObject(
+                    PutObjectRequest.builder()
+                            .bucket(bucket)
+                            .key(key)
+                            .contentType(contentType)
+                            .contentLength(file.getSize())
+                            .metadata(java.util.Map.of(
+                                    "contract-id", contractId.toString(),
+                                    "uploaded-by", actorId.toString()))
+                            .build(),
+                    RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+            log.info("[S3] Relocation evidence uploaded key={} contractId={}", key, contractId);
+            return key;
+        } catch (IOException e) {
+            throw new RuntimeException("Relocation evidence upload failed: " + e.getMessage(), e);
+        }
     }
 
     public byte[] downloadBytes(String key) {
@@ -113,8 +166,7 @@ public class S3Service {
         try (PDDocument doc = Loader.loadPDF(contractPdf);
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
 
-            PDPage page = new PDPage(
-                    new PDRectangle(PDRectangle.A4.getHeight(), PDRectangle.A4.getWidth()));
+            PDPage page = new PDPage(new PDRectangle(PDRectangle.A4.getHeight(), PDRectangle.A4.getWidth()));
             doc.addPage(page);
 
             float pageW = page.getMediaBox().getWidth();
@@ -132,8 +184,8 @@ public class S3Service {
             float frontW = frontImg.getWidth() * frontScale, frontH = frontImg.getHeight() * frontScale;
             float backW = backImg.getWidth() * backScale, backH = backImg.getHeight() * backScale;
 
-            PDType1Font fontBold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
-            PDType1Font fontNormal = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+            PDType0Font fontBold   = loadFont(doc, "/fonts/SVN-Times New Roman 2 bold.ttf");
+            PDType0Font fontNormal = loadFont(doc, "/fonts/SVN-Times New Roman 2.ttf");
 
             try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
                 float baseY = pageH - margin - 60f;
@@ -141,14 +193,14 @@ public class S3Service {
                 cs.beginText();
                 cs.setFont(fontBold, 13);
                 cs.newLineAtOffset(margin, pageH - margin - 20);
-                cs.showText("PHỤ LỤC: CĂN CƯỚC CÔNG DÂN CỦA NGƯỜI THUÊ");
+                cs.showText("APPENDIX: TENANT CITIZEN ID");
                 cs.endText();
 
                 cs.drawImage(frontImg, margin, baseY - frontH, frontW, frontH);
                 cs.beginText();
                 cs.setFont(fontNormal, 10);
                 cs.newLineAtOffset(margin + frontW / 2 - 25, baseY - frontH - 15);
-                cs.showText("Mặt Trước");
+                cs.showText("Front");
                 cs.endText();
 
                 float backX = margin + imgW + gap;
@@ -156,7 +208,7 @@ public class S3Service {
                 cs.beginText();
                 cs.setFont(fontNormal, 10);
                 cs.newLineAtOffset(backX + backW / 2 - 20, baseY - backH - 15);
-                cs.showText("Mặt Sau");
+                cs.showText("Back");
                 cs.endText();
             }
 
@@ -165,7 +217,70 @@ public class S3Service {
 
         } catch (Exception e) {
             log.error("[S3] appendCccdPage failed", e);
-            throw new IllegalStateException("Append CCCD page thất bại: " + e.getMessage(), e);
+            throw new IllegalStateException("Failed to append Citizen ID page: " + e.getMessage(), e);
+        }
+    }
+
+    public byte[] appendPassportPage(byte[] contractPdf, byte[] passportImageBytes) {
+        try (PDDocument doc = Loader.loadPDF(contractPdf);
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+
+            float pageW = page.getMediaBox().getWidth();
+            float pageH = page.getMediaBox().getHeight();
+            float margin = 40f;
+            float headerReserve = 80f;
+            float imgMaxW = pageW - margin * 2;
+            float imgMaxH = pageH - margin * 2 - headerReserve;
+
+            PDImageXObject passportImg = PDImageXObject.createFromByteArray(doc, passportImageBytes, "passport");
+            float scale = Math.min(imgMaxW / passportImg.getWidth(), imgMaxH / passportImg.getHeight());
+            float imgW = passportImg.getWidth() * scale;
+            float imgH = passportImg.getHeight() * scale;
+            float imgX = (pageW - imgW) / 2;
+            float imgY = pageH - margin - headerReserve - imgH;
+
+            PDType0Font fontBold   = loadFont(doc, "/fonts/SVN-Times New Roman 2 bold.ttf");
+            PDType0Font fontNormal = loadFont(doc, "/fonts/SVN-Times New Roman 2.ttf");
+
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                cs.beginText();
+                cs.setFont(fontBold, 13);
+                cs.newLineAtOffset(margin, pageH - margin - 20);
+                cs.showText("APPENDIX: TENANT PASSPORT");
+                cs.endText();
+
+                cs.beginText();
+                cs.setFont(fontNormal, 10);
+                cs.newLineAtOffset(margin, pageH - margin - 40);
+                cs.showText("(Passport of the tenant / テナントのパスポート)");
+                cs.endText();
+
+                cs.drawImage(passportImg, imgX, imgY, imgW, imgH);
+
+                cs.beginText();
+                cs.setFont(fontNormal, 10);
+                cs.newLineAtOffset(margin, imgY - 20);
+                cs.showText("Passport information page (photo page)");
+                cs.endText();
+            }
+
+            doc.save(out);
+            return out.toByteArray();
+
+        } catch (Exception e) {
+            log.error("[S3] appendPassportPage failed", e);
+            throw new IllegalStateException("Failed to append passport page: " + e.getMessage(), e);
+        }
+    }
+
+    private PDType0Font loadFont(PDDocument doc, String path) throws IOException {
+        try (var stream = getClass().getResourceAsStream(path)) {
+            if (stream == null)
+                throw new IllegalStateException("Font not found: " + path);
+            return PDType0Font.load(doc, stream);
         }
     }
 

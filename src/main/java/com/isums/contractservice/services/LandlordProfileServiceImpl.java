@@ -24,7 +24,11 @@ public class LandlordProfileServiceImpl implements LandlordProfileService {
     @Transactional
     public LandlordProfileDto upsert(UUID userId, UpsertLandlordProfileRequest req) {
         LandlordProfile profile = repository.findByUserId(userId)
-                .orElse(LandlordProfile.builder().userId(userId).build());
+                .orElseGet(() -> LandlordProfile.builder()
+                        .userId(userId)
+                        .depositWaitDays(3)
+                        .forceMajeureNoticeHours(24)
+                        .build());
 
         profile.setFullName(req.fullName());
         profile.setIdentityNumber(req.identityNumber());
@@ -34,9 +38,24 @@ public class LandlordProfileServiceImpl implements LandlordProfileService {
         profile.setPhoneNumber(req.phoneNumber());
         profile.setEmail(req.email());
         profile.setBankAccount(req.bankAccount());
+        profile.setDateOfBirth(req.dateOfBirth());
+        profile.setPermanentAddress(req.permanentAddress());
+        profile.setBankName(req.bankName());
+        profile.setTaxCode(req.taxCode());
+        if (req.depositWaitDays() != null) {
+            profile.setDepositWaitDays(req.depositWaitDays());
+        } else if (profile.getDepositWaitDays() == null) {
+            profile.setDepositWaitDays(3);
+        }
+        if (req.forceMajeureNoticeHours() != null) {
+            profile.setForceMajeureNoticeHours(req.forceMajeureNoticeHours());
+        } else if (profile.getForceMajeureNoticeHours() == null) {
+            profile.setForceMajeureNoticeHours(24);
+        }
 
         repository.save(profile);
-        log.info("[LandlordProfile] Upserted userId={}", userId);
+        log.info("[LandlordProfile] Upserted userId={} depositWaitDays={} forceMajeureHours={}",
+                userId, profile.getDepositWaitDays(), profile.getForceMajeureNoticeHours());
         return LandlordProfileDto.from(profile);
     }
 

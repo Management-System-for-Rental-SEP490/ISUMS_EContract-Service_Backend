@@ -7,6 +7,7 @@ import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.annotations.UuidGenerator;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @Entity
@@ -50,6 +51,24 @@ public class LandlordProfile {
 
     @Column(name = "bank_account")
     private String bankAccount;
+
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+
+    @Column(name = "permanent_address", length = 512)
+    private String permanentAddress;
+
+    @Column(name = "bank_name")
+    private String bankName;
+
+    @Column(name = "tax_code", length = 32)
+    private String taxCode;
+
+    @Column(name = "deposit_wait_days", nullable = false)
+    private Integer depositWaitDays;
+
+    @Column(name = "force_majeure_notice_hours", nullable = false)
+    private Integer forceMajeureNoticeHours;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)

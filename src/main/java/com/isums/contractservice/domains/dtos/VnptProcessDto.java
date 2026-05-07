@@ -25,4 +25,28 @@ public record VnptProcessDto(
                 signatureText, fontSize, showReason, confirmTermsConditions
         );
     }
+
+    public VnptProcessDto withNormalizedPosition() {
+        if (signingPosition == null || signingPosition.isBlank()) return this;
+        String[] parts = signingPosition.split(",");
+        if (parts.length != 4) return this;
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < parts.length; i++) {
+            String trimmed = parts[i].trim();
+            if (trimmed.isEmpty()) return this;
+            try {
+                long rounded = Math.round(Double.parseDouble(trimmed));
+                if (i > 0) sb.append(',');
+                sb.append(rounded);
+            } catch (NumberFormatException e) {
+                return this;
+            }
+        }
+        String normalized = sb.toString();
+        if (normalized.equals(signingPosition)) return this;
+        return new VnptProcessDto(
+                processCode, token, processId, reason, reject, otp, signatureDisplayMode, signatureImage, signingPage, normalized,
+                signatureText, fontSize, showReason, confirmTermsConditions
+        );
+    }
 }

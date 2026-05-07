@@ -11,8 +11,7 @@ public class RedisConfig implements IsumCacheConfigurer {
     @Override
     public Map<String, Duration> cacheTtls() {
         return Map.of(
-                "vnptToken",       Duration.ofHours(23).plusMinutes(30),
-                "vnptProcessCode", Duration.ofMinutes(15)
+                "vnptToken", Duration.ofHours(23).plusMinutes(30)
         );
     }
 }
