@@ -3,23 +3,17 @@ name: Deploy
 on:
   push:
     branches: [ main ]
-    paths-ignore:
-      - '.github/workflows/**'
-      - 'docs/**'
-      - 'README.md'
-  workflow_dispatch:
 
 permissions:
   id-token: write
   contents: read
-  packages: read
+  packages: write
 
 jobs:
   deploy:
     uses: Management-System-for-Rental-SEP490/.github/.github/workflows/deploy-java-service.yml@main
     with:
       service_name: contract-service
-      xmx: 768m
-      ecr_keep_tagged: 8
+      xmx: 1280m
     secrets:
       GH_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
