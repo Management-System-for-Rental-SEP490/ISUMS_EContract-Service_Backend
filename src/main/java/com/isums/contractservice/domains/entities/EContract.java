@@ -212,6 +212,9 @@ public class EContract implements Serializable {
     @Column(name = "terminated_by")
     private UUID terminatedBy;
 
+    @Column(name = "termination_requested_at")
+    private Instant terminationRequestedAt;
+
     @Column(name = "renew_notice_days")
     private Integer renewNoticeDays;
 

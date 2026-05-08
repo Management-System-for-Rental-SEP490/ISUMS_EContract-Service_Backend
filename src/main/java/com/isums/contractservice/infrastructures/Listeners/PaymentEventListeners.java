@@ -108,12 +108,16 @@ public class PaymentEventListeners {
             EContract contract = contractRepo.findById(event.getContractId())
                     .orElseThrow();
 
-            if (contract.getStatus() != EContractStatus.IN_PROGRESS && contract.getStatus() != EContractStatus.COMPLETED) {
+            if (contract.getStatus() != EContractStatus.IN_PROGRESS) {
                 ack.acknowledge();
                 return;
             }
 
-            // Notify manager qua email
+            if (contract.getTerminationRequestedAt() == null) {
+                contract.setTerminationRequestedAt(Instant.now());
+                contractRepo.save(contract);
+            }
+
             UserResponse manager = userGrpcClient
                     .getUserById(contract.getCreatedBy().toString());
 

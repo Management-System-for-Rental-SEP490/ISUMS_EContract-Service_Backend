@@ -41,7 +41,8 @@ class LandlordProfileServiceImplTest {
     private UpsertLandlordProfileRequest req() {
         return new UpsertLandlordProfileRequest(
                 "Nguyen Van A", "0123456789", "2020-01-01", "Ha Noi",
-                "1 Pho Hue", "0900", "a@b.com", "123456789");
+                "1 Pho Hue", "0900", "a@b.com", "123456789",
+                java.time.LocalDate.of(1990, 1, 1), "Perm Addr", "VCB", "TAX01", 7, 24);
     }
 
     @Nested

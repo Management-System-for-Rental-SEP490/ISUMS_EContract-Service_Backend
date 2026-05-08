@@ -1,7 +1,9 @@
 package com.isums.contractservice.services;
 
 import com.isums.contractservice.domains.entities.EContract;
+import com.isums.contractservice.domains.enums.DepositStatus;
 import com.isums.contractservice.domains.enums.EContractStatus;
+import com.isums.contractservice.domains.events.ForceTerminationEvent;
 import com.isums.contractservice.domains.events.InspectionScheduledEvent;
 import com.isums.contractservice.domains.events.JobCreatedEvent;
 import com.isums.contractservice.domains.events.SendEmailEvent;
@@ -19,6 +21,7 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
@@ -76,14 +79,32 @@ public class ContractTerminationServiceimpl implements ContractTerminationServic
         EContract contract = contractRepo.findById(contractId)
                 .orElseThrow(() -> new NotFoundException("Contract not found"));
 
-        if (contract.getStatus() != EContractStatus.IN_PROGRESS
-                && contract.getStatus() != EContractStatus.COMPLETED) {
-            throw new BusinessException("Contract is not active");
+        if (contract.getStatus() != EContractStatus.IN_PROGRESS) {
+            throw new BusinessException(
+                    "Force termination requires contract IN_PROGRESS. Current: " + contract.getStatus());
         }
+
+        contract.setDepositStatus(DepositStatus.FORFEITED);
+        contract.setTerminatedReason("FORCE_TERMINATION_OVERDUE_30_DAYS");
+        contract.setTerminatedBy(actorId);
+        contract.setTerminatedAt(Instant.now());
+        contractRepo.save(contract);
+
+        kafka.send("contract.force-terminated",
+                contract.getId().toString(),
+                ForceTerminationEvent.builder()
+                        .contractId(contract.getId())
+                        .houseId(contract.getHouseId())
+                        .tenantId(contract.getUserId())
+                        .reason("OVERDUE_PAYMENT_30_DAYS")
+                        .actorId(actorId)
+                        .terminatedAt(Instant.now())
+                        .messageId(UUID.randomUUID().toString())
+                        .build());
 
         handleExpiredContract(contract);
 
-        log.info("[Contract] TerminationOverdue confirmed contractId={} by={}",
+        log.info("[Contract] TerminationOverdue confirmed contractId={} by={} depositForfeit=true",
                 contractId, actorId);
     }
 

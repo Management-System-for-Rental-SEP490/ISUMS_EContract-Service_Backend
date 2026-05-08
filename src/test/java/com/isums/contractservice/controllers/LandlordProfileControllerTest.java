@@ -1,6 +1,7 @@
 package com.isums.contractservice.controllers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.isums.contractservice.domains.dtos.LandlordProfileDto;
 import com.isums.contractservice.domains.dtos.UpsertLandlordProfileRequest;
 import com.isums.contractservice.exceptions.GlobalExceptionHandler;
@@ -43,7 +44,7 @@ class LandlordProfileControllerTest {
     @InjectMocks private LandlordProfileController controller;
 
     private MockMvc mvc;
-    private final ObjectMapper om = new ObjectMapper();
+    private final ObjectMapper om = new ObjectMapper().registerModule(new JavaTimeModule());
     private UUID userId;
 
     @BeforeEach
@@ -96,7 +97,8 @@ class LandlordProfileControllerTest {
     @DisplayName("PUT /me upserts profile from JWT subject")
     void putMe() throws Exception {
         UpsertLandlordProfileRequest req = new UpsertLandlordProfileRequest(
-                "A", "0123", "2020-01-01", "HN", "addr", "0900", "a@b.com", "bank");
+                "A", "0123", "2020-01-01", "HN", "addr", "0900", "a@b.com", "bank",
+                java.time.LocalDate.of(1990, 1, 1), "perm addr", "VCB", "TAX01", 7, 24);
         when(service.upsert(eq(userId), any())).thenReturn(dto());
 
         mvc.perform(put("/api/econtracts/landlord-profiles/me")

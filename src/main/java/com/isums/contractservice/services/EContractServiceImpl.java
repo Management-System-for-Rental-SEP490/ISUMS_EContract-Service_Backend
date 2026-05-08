@@ -162,9 +162,25 @@ public class EContractServiceImpl implements EContractService {
                 tenantId = UUID.randomUUID();
                 createVnptUser(vnptClient.getToken(), tenantId, req);
                 kafka.send("createUser-topic", CreateUserPlacedEvent.builder()
-                        .id(tenantId).name(req.name()).email(req.email())
-                        .phoneNumber(req.phoneNumber()).identityNumber(req.identityNumber())
-                        .isEnabled(false).build());
+                        .id(tenantId)
+                        .name(req.name())
+                        .email(req.email())
+                        .phoneNumber(req.phoneNumber())
+                        .identityNumber(req.identityNumber())
+                        .dateOfIssue(req.dateOfIssue() != null ? req.dateOfIssue().toString() : null)
+                        .placeOfIssue(req.placeOfIssue())
+                        .permanentAddress(req.permanentAddress())
+                        .dateOfBirth(req.dateOfBirth() != null ? req.dateOfBirth().toString() : null)
+                        .gender(req.gender())
+                        .passportNumber(req.passportNumber())
+                        .passportIssueDate(req.passportIssueDate() != null ? req.passportIssueDate().toString() : null)
+                        .passportExpiryDate(req.passportExpiryDate() != null ? req.passportExpiryDate().toString() : null)
+                        .nationality(req.nationality())
+                        .visaType(req.visaType())
+                        .visaExpiryDate(req.visaExpiryDate() != null ? req.visaExpiryDate().toString() : null)
+                        .language(resolveUserLanguage(req))
+                        .isEnabled(false)
+                        .build());
             }
 
             cachedPageService.evictAll(PAGE_NS);
@@ -2018,5 +2034,14 @@ public class EContractServiceImpl implements EContractService {
     private UUID resolveInternalTenantId(UUID callerId) {
         UserResponse user = userGrpc.getUserIdAndRoleByKeyCloakId(callerId.toString());
         return UUID.fromString(user.getId());
+    }
+
+    private String resolveUserLanguage(CreateEContractRequest req) {
+        com.isums.contractservice.domains.enums.ContractLanguage lang = req.contractLanguageOrDefault();
+        return switch (lang) {
+            case VI -> "vi_VN";
+            case VI_EN -> "en_US";
+            case VI_JA -> "ja_JP";
+        };
     }
 }

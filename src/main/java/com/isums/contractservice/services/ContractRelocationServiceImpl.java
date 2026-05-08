@@ -1295,7 +1295,10 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
                 continue;
             }
             String houseStatus = house.getStatus() != null ? house.getStatus().name() : null;
-            if (houseStatus != null && !"RENTED".equals(houseStatus)) {
+            if (houseStatus != null
+                    && !"RENTED".equals(houseStatus)
+                    && !"HOUSE_STATUS_RENTED".equals(houseStatus)
+                    && !"HOUSE_STATUS_UNSPECIFIED".equals(houseStatus)) {
                 continue;
             }
 
