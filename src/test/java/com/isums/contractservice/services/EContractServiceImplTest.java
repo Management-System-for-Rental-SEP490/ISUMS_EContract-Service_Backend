@@ -441,11 +441,12 @@ class EContractServiceImplTest {
     class HasCccd {
 
         @Test
-        @DisplayName("returns true when both front and back keys set")
+        @DisplayName("returns true when CCCD verified")
         void both() {
             EContract c = contract(EContractStatus.READY);
             c.setCccdFrontKey("front");
             c.setCccdBackKey("back");
+            c.setCccdVerifiedAt(java.time.Instant.now());
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
 
             assertThat(service.hasCccd(contractId)).isTrue();
@@ -810,6 +811,74 @@ class EContractServiceImplTest {
                         1_000_000L, Instant.now(),
                         Instant.now().plusSeconds(86400), renewalRequestId);
             }
+        }
+    }
+
+    @Nested
+    @DisplayName("resolveUserLanguage")
+    class ResolveUserLanguage {
+
+        private CreateEContractRequest reqWith(
+                com.isums.contractservice.domains.enums.TenantType tt,
+                com.isums.contractservice.domains.enums.ContractLanguage cl) {
+            return CreateEContractRequest.builder()
+                    .isNewAccount(true)
+                    .name("Test").email("test@example.com")
+                    .houseId(UUID.randomUUID())
+                    .startDate(Instant.now())
+                    .endDate(Instant.now().plusSeconds(86400))
+                    .rentAmount(5_000_000L).payDate(5).depositAmount(10_000_000L)
+                    .tenantType(tt)
+                    .contractLanguage(cl)
+                    .build();
+        }
+
+        @Test
+        @DisplayName("VI contract language → vi_VN")
+        void vietnamese() {
+            CreateEContractRequest req = reqWith(
+                    com.isums.contractservice.domains.enums.TenantType.VIETNAMESE,
+                    com.isums.contractservice.domains.enums.ContractLanguage.VI);
+            String locale = (String) ReflectionTestUtils.invokeMethod(service, "resolveUserLanguage", req);
+            assertThat(locale).isEqualTo("vi_VN");
+        }
+
+        @Test
+        @DisplayName("VI_EN contract language (foreigner English) → en_US")
+        void english() {
+            CreateEContractRequest req = reqWith(
+                    com.isums.contractservice.domains.enums.TenantType.FOREIGNER,
+                    com.isums.contractservice.domains.enums.ContractLanguage.VI_EN);
+            String locale = (String) ReflectionTestUtils.invokeMethod(service, "resolveUserLanguage", req);
+            assertThat(locale).isEqualTo("en_US");
+        }
+
+        @Test
+        @DisplayName("VI_JA contract language (foreigner Japanese) → ja_JP")
+        void japanese() {
+            CreateEContractRequest req = reqWith(
+                    com.isums.contractservice.domains.enums.TenantType.FOREIGNER,
+                    com.isums.contractservice.domains.enums.ContractLanguage.VI_JA);
+            String locale = (String) ReflectionTestUtils.invokeMethod(service, "resolveUserLanguage", req);
+            assertThat(locale).isEqualTo("ja_JP");
+        }
+
+        @Test
+        @DisplayName("FOREIGNER without explicit contractLanguage → defaults VI_EN → en_US")
+        void foreignerDefaultsEnUs() {
+            CreateEContractRequest req = reqWith(
+                    com.isums.contractservice.domains.enums.TenantType.FOREIGNER, null);
+            String locale = (String) ReflectionTestUtils.invokeMethod(service, "resolveUserLanguage", req);
+            assertThat(locale).isEqualTo("en_US");
+        }
+
+        @Test
+        @DisplayName("VIETNAMESE without explicit contractLanguage → defaults VI → vi_VN")
+        void vietnameseDefaultsViVn() {
+            CreateEContractRequest req = reqWith(
+                    com.isums.contractservice.domains.enums.TenantType.VIETNAMESE, null);
+            String locale = (String) ReflectionTestUtils.invokeMethod(service, "resolveUserLanguage", req);
+            assertThat(locale).isEqualTo("vi_VN");
         }
     }
 }

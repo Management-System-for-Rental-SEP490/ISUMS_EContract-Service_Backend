@@ -36,5 +36,7 @@ public class CreateUserPlacedEvent {
     private String nationality;
     private String visaType;
     private String visaExpiryDate;
+
+    private String language;
 }
 

@@ -40,6 +40,8 @@ public interface EContractRepository extends JpaRepository<EContract, UUID>, Jpa
 
     List<EContract> findByStatusInAndEndAtBefore(List<EContractStatus> statuses, Instant endAt);
 
+    List<EContract> findByStatusAndTerminationRequestedAtBefore(EContractStatus status, Instant cutoff);
+
     @Query("""
             SELECT e FROM EContract e
             WHERE e.status = com.isums.contractservice.domains.enums.EContractStatus.COMPLETED

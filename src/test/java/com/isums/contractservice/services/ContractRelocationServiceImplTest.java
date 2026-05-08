@@ -299,6 +299,9 @@ class ContractRelocationServiceImplTest {
                     .thenReturn(HouseResponse.newBuilder().setId(houseIdNew.toString()).build());
             when(s3Service.uploadRelocationEvidence(any(), eq(contractId), eq(kcId)))
                     .thenReturn("relocation-evidence/" + contractId + "/img1.jpg");
+            org.mockito.Mockito.lenient()
+                    .when(s3Service.presignedUrl(anyString(), org.mockito.ArgumentMatchers.anyInt()))
+                    .thenAnswer(i -> "https://s3.signed/" + i.getArgument(0));
             when(legalTemplateService.resolveSnapshot(anyString(), any())).thenReturn("LANDLORD-FAULT TEXT");
             when(relocationRepo.save(any(ContractRelocationRequest.class))).thenAnswer(i -> i.getArgument(0));
 

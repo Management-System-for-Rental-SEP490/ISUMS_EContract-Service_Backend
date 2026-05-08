@@ -126,7 +126,7 @@ class ContractTerminationServiceimplTest {
     class Confirm {
 
         @Test
-        @DisplayName("happy path for IN_PROGRESS contract")
+        @DisplayName("happy path for IN_PROGRESS — forfeit deposit + publish force-terminated event")
         void happyInProgress() {
             EContract c = contract(EContractStatus.IN_PROGRESS);
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
@@ -134,9 +134,18 @@ class ContractTerminationServiceimplTest {
                     .setId(managerId.toString()).setName("M").setEmail("m@x.com").build();
             when(userGrpcClient.getUserById(managerId.toString())).thenReturn(manager);
 
-            service.confirmTerminationOverdue(contractId, UUID.randomUUID());
+            UUID actor = UUID.randomUUID();
+            service.confirmTerminationOverdue(contractId, actor);
 
             assertThat(c.getStatus()).isEqualTo(EContractStatus.PENDING_TERMINATION);
+            assertThat(c.getDepositStatus())
+                    .isEqualTo(com.isums.contractservice.domains.enums.DepositStatus.FORFEITED);
+            assertThat(c.getTerminatedReason()).isEqualTo("FORCE_TERMINATION_OVERDUE_30_DAYS");
+            assertThat(c.getTerminatedBy()).isEqualTo(actor);
+            assertThat(c.getTerminatedAt()).isNotNull();
+
+            verify(kafka).send(eq("contract.force-terminated"), anyString(),
+                    any(com.isums.contractservice.domains.events.ForceTerminationEvent.class));
         }
 
         @Test
@@ -149,13 +158,24 @@ class ContractTerminationServiceimplTest {
         }
 
         @Test
-        @DisplayName("throws BusinessException for inactive status")
+        @DisplayName("throws BusinessException for DRAFT status")
         void inactive() {
             when(contractRepo.findById(contractId))
                     .thenReturn(Optional.of(contract(EContractStatus.DRAFT)));
 
             assertThatThrownBy(() -> service.confirmTerminationOverdue(contractId, UUID.randomUUID()))
                     .isInstanceOf(BusinessException.class);
+        }
+
+        @Test
+        @DisplayName("throws BusinessException for COMPLETED status (tightened guard)")
+        void completedRejected() {
+            when(contractRepo.findById(contractId))
+                    .thenReturn(Optional.of(contract(EContractStatus.COMPLETED)));
+
+            assertThatThrownBy(() -> service.confirmTerminationOverdue(contractId, UUID.randomUUID()))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("IN_PROGRESS");
         }
     }
 }
