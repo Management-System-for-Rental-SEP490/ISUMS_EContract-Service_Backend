@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -20,6 +21,11 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> 
      * so multiple pollers (HA deployment) never fight over the same rows.
      * Postgres specific; Hibernate translates LockModeType.PESSIMISTIC_WRITE + the
      * hint below into {@code FOR UPDATE SKIP LOCKED}.
+     *
+     * Ordering picks fresh rows first (attempts ASC) so a backlog of failed retries
+     * can never starve newly-enqueued events. The retryAfter filter applies an
+     * exponential-backoff window so a single broker hiccup doesn't burn 10 attempts
+     * on a row in 20 seconds.
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @QueryHints({
@@ -29,8 +35,10 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, UUID> 
             SELECT o FROM OutboxEvent o
             WHERE o.sentAt IS NULL
               AND o.attempts < :maxAttempts
-            ORDER BY o.createdAt ASC
+              AND (o.lastAttemptAt IS NULL OR o.lastAttemptAt < :retryAfter)
+            ORDER BY o.attempts ASC, o.createdAt ASC
             """)
     List<OutboxEvent> lockUnsentBatch(@Param("maxAttempts") int maxAttempts,
+                                      @Param("retryAfter") Instant retryAfter,
                                       org.springframework.data.domain.Pageable pageable);
 }

@@ -9,6 +9,8 @@ import com.isums.contractservice.domains.enums.DepositHandling;
 import com.isums.contractservice.domains.enums.DepositStatus;
 import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.enums.RenewalRequestStatus;
+import com.isums.contractservice.domains.enums.RelocationFaultParty;
+import com.isums.contractservice.domains.enums.RelocationRequestKind;
 import com.isums.contractservice.domains.enums.RelocationRequestStatus;
 import com.isums.contractservice.domains.events.*;
 import com.isums.contractservice.exceptions.BusinessException;
@@ -28,6 +30,8 @@ import common.paginations.converters.SpringPageConverter;
 import common.paginations.dtos.PageRequest;
 import common.paginations.dtos.PageResponse;
 import common.paginations.specifications.SpecificationBuilder;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
@@ -159,28 +163,36 @@ public class EContractServiceImpl implements EContractService {
             if (!req.isNewAccount()) {
                 tenantId = UUID.fromString(userGrpc.getUserByEmail(req.email(), jwtToken).getId());
             } else {
-                tenantId = UUID.randomUUID();
+                Optional<UUID> existingTenantId = findExistingTenantIdByEmail(req.email(), jwtToken);
+                if (existingTenantId.isPresent()) {
+                    tenantId = existingTenantId.get();
+                    log.warn("[Booking] isNewAccount=true but email already exists; using existing userId={} email={}",
+                            tenantId, req.email());
+                } else {
+                    tenantId = UUID.randomUUID();
                 createVnptUser(vnptClient.getToken(), tenantId, req);
-                kafka.send("createUser-topic", CreateUserPlacedEvent.builder()
-                        .id(tenantId)
-                        .name(req.name())
-                        .email(req.email())
-                        .phoneNumber(req.phoneNumber())
-                        .identityNumber(req.identityNumber())
-                        .dateOfIssue(req.dateOfIssue() != null ? req.dateOfIssue().toString() : null)
-                        .placeOfIssue(req.placeOfIssue())
-                        .permanentAddress(req.permanentAddress())
-                        .dateOfBirth(req.dateOfBirth() != null ? req.dateOfBirth().toString() : null)
-                        .gender(req.gender())
-                        .passportNumber(req.passportNumber())
-                        .passportIssueDate(req.passportIssueDate() != null ? req.passportIssueDate().toString() : null)
-                        .passportExpiryDate(req.passportExpiryDate() != null ? req.passportExpiryDate().toString() : null)
-                        .nationality(req.nationality())
-                        .visaType(req.visaType())
-                        .visaExpiryDate(req.visaExpiryDate() != null ? req.visaExpiryDate().toString() : null)
-                        .language(resolveUserLanguage(req))
-                        .isEnabled(false)
-                        .build());
+                    CreateUserPlacedEvent event = CreateUserPlacedEvent.builder()
+                            .id(tenantId)
+                            .name(req.name())
+                            .email(req.email())
+                            .phoneNumber(req.phoneNumber())
+                            .identityNumber(req.identityNumber())
+                            .dateOfIssue(req.dateOfIssue() != null ? req.dateOfIssue().toString() : null)
+                            .placeOfIssue(req.placeOfIssue())
+                            .permanentAddress(req.permanentAddress())
+                            .dateOfBirth(req.dateOfBirth() != null ? req.dateOfBirth().toString() : null)
+                            .gender(req.gender())
+                            .passportNumber(req.passportNumber())
+                            .passportIssueDate(req.passportIssueDate() != null ? req.passportIssueDate().toString() : null)
+                            .passportExpiryDate(req.passportExpiryDate() != null ? req.passportExpiryDate().toString() : null)
+                            .nationality(req.nationality())
+                            .visaType(req.visaType())
+                            .visaExpiryDate(req.visaExpiryDate() != null ? req.visaExpiryDate().toString() : null)
+                            .language(resolveUserLanguage(req))
+                            .isEnabled(false)
+                            .build();
+                    outboxPublisher.enqueue("createUser-topic", tenantId.toString(), event, UUID.randomUUID().toString());
+                }
             }
 
             cachedPageService.evictAll(PAGE_NS);
@@ -278,6 +290,14 @@ public class EContractServiceImpl implements EContractService {
         c.setSnapshotKey(snapshotKey);
         c.getStatus().validateTransition(EContractStatus.PENDING_TENANT_REVIEW);
         c.setStatus(EContractStatus.PENDING_TENANT_REVIEW);
+
+        if (c.getTenantEmail() == null || c.getTenantEmail().isBlank()) {
+            String resolvedEmail = resolveTenantEmail(c.getUserId());
+            if (resolvedEmail != null && !resolvedEmail.isBlank()) {
+                c.setTenantEmail(resolvedEmail);
+            }
+        }
+
         contractRepo.save(c);
 
         String magicToken = contractTokenService.generateToken(contractId, c.getUserId());
@@ -287,12 +307,15 @@ public class EContractServiceImpl implements EContractService {
         ConfirmAndSendToTenantEvent event = ConfirmAndSendToTenantEvent.builder()
                 .messageId(UUID.randomUUID().toString())
                 .recipientUserId(c.getUserId())
+                .recipientEmail(c.getTenantEmail())
+                .recipientName(c.getTenantName())
                 .contractId(contractId)
                 .contractName(c.getName())
                 .url(pdfViewUrl)
                 .confirmUrl(confirmUrl)
                 .startDate(c.getStartAt())
                 .endDate(c.getEndAt())
+                .contractLanguage(c.getContractLanguage() != null ? c.getContractLanguage().name() : null)
                 .build();
 
         cachedPageService.evictAll(PAGE_NS);
@@ -844,7 +867,16 @@ public class EContractServiceImpl implements EContractService {
         contract.setStatus(EContractStatus.DEPOSIT_REFUND_PENDING);
         contractRepo.save(contract);
 
-        UserResponse tenant = userGrpc.getUserById(contract.getUserId().toString());
+        String tenantEmail = contract.getTenantEmail();
+        try {
+            UserResponse tenant = userGrpc.getUserById(contract.getUserId().toString());
+            if (tenant != null && tenant.getEmail() != null && !tenant.getEmail().isBlank()) {
+                tenantEmail = tenant.getEmail();
+            }
+        } catch (Exception e) {
+            log.warn("[Contract] Cannot resolve tenant email via gRPC, using contract fallback contractId={} tenantId={}: {}",
+                    contractId, contract.getUserId(), e.getMessage());
+        }
 
         kafka.send("contract.deposit-refund.confirmed",
                 contractId.toString(),
@@ -852,7 +884,7 @@ public class EContractServiceImpl implements EContractService {
                         .contractId(contractId)
                         .houseId(contract.getHouseId())
                         .tenantId(contract.getUserId())
-                        .tenantEmail(tenant.getEmail())
+                        .tenantEmail(tenantEmail)
                         .refundAmount(req.refundAmount())
                         .note(req.note())
                         .messageId(UUID.randomUUID().toString())
@@ -1284,7 +1316,9 @@ public class EContractServiceImpl implements EContractService {
                 .taxResponsibility(req.taxResponsibilityOrDefault())
                 .meterReadingsStart(meters.isEmpty() ? null : new HashMap<>(meters))
                 .hasPowerCutClause(req.hasPowerCutClause() != null ? req.hasPowerCutClause() : false)
-                .tenantName(req.name()).createdBy(actorId).build();
+                .tenantName(req.name())
+                .tenantEmail(req.email())
+                .createdBy(actorId).build();
         contractRepo.save(e);
         log.info("[EContract] Created DRAFT contractId={} language={} tenantType={}",
                 e.getId(), e.getContractLanguage(), e.getTenantType());
@@ -1542,7 +1576,7 @@ public class EContractServiceImpl implements EContractService {
 
     private void sendContractCompletedEvent(EContract contract, String signedPdfUrl) {
         try {
-            String tenantEmail = null;
+            String tenantEmail = contract.getTenantEmail();
             Boolean isNewAccount = null;
             try {
                 UserResponse tenant = userGrpc.getUserById(contract.getUserId().toString());
@@ -1551,7 +1585,21 @@ public class EContractServiceImpl implements EContractService {
                     isNewAccount = !tenant.getIsEnabled();
                 }
             } catch (Exception e) {
-                log.warn("[EContract] Cannot fetch tenant userId={}: {}", contract.getUserId(), e.getMessage());
+                log.warn("[EContract] Cannot fetch tenant by userId={}, will retry by email={} : {}",
+                        contract.getUserId(), tenantEmail, e.getMessage());
+                if (tenantEmail != null && !tenantEmail.isBlank()) {
+                    try {
+                        UserResponse tenantByEmail = userGrpc.getUserByEmail(tenantEmail);
+                        if (tenantByEmail != null) {
+                            isNewAccount = !tenantByEmail.getIsEnabled();
+                            log.info("[EContract] Resolved tenant by email fallback userId={} email={} isNewAccount={}",
+                                    contract.getUserId(), tenantEmail, isNewAccount);
+                        }
+                    } catch (Exception emailEx) {
+                        log.warn("[EContract] Email-based tenant lookup also failed email={}: {}",
+                                tenantEmail, emailEx.getMessage());
+                    }
+                }
             }
 
             Instant depositDueAt = null;
@@ -1653,6 +1701,9 @@ public class EContractServiceImpl implements EContractService {
             if (relocation.getStatus() == RelocationRequestStatus.COMPLETED) {
                 return;
             }
+            if (relocation.getRequestKind() == RelocationRequestKind.ACTIVE_LEASE_TENANT_UPGRADE) {
+                return;
+            }
 
             EContract old = contractRepo.findById(replacement.getRelocationSourceContractId())
                     .orElseThrow(() -> new NotFoundException("Source relocation contract not found: "
@@ -1662,6 +1713,7 @@ public class EContractServiceImpl implements EContractService {
                 relocation.setStatus(RelocationRequestStatus.COMPLETED);
                 relocation.setCompletedAt(Instant.now());
                 relocationRequestRepo.save(relocation);
+                publishContractReplaced(old, replacement, relocation);
                 return;
             }
 
@@ -1687,10 +1739,47 @@ public class EContractServiceImpl implements EContractService {
             relocation.setStatus(RelocationRequestStatus.COMPLETED);
             relocation.setCompletedAt(Instant.now());
             relocationRequestRepo.save(relocation);
+            publishContractReplaced(old, replacement, relocation);
 
             log.info("[Relocation] COMPLETED requestId={} oldContractId={} newContractId={}",
                     relocation.getId(), old.getId(), replacement.getId());
         });
+    }
+
+    private void publishContractReplaced(
+            EContract old,
+            EContract replacement,
+            ContractRelocationRequest relocation) {
+        boolean landlordFault = relocation.getFaultParty() == RelocationFaultParty.LANDLORD;
+        UUID newHouseId = relocation.getApprovedHouseId() != null
+                ? relocation.getApprovedHouseId()
+                : (relocation.getRequestedHouseId() != null
+                        ? relocation.getRequestedHouseId() : replacement.getHouseId());
+        ContractReplacedEvent event = ContractReplacedEvent.builder()
+                .messageId(UUID.randomUUID().toString())
+                .oldContractId(old.getId())
+                .newContractId(replacement.getId())
+                .oldHouseId(old.getHouseId())
+                .newHouseId(newHouseId)
+                .tenantId(old.getUserId())
+                .keepHouseUnavailable(landlordFault)
+                .depositHandling(relocation.getDepositHandling() != null
+                        ? relocation.getDepositHandling().name()
+                        : null)
+                .transferredDepositAmount(relocation.getTransferredDepositAmount() != null
+                        ? relocation.getTransferredDepositAmount() : 0L)
+                .reason(landlordFault
+                        ? (relocation.getStaffReportReason() != null && !relocation.getStaffReportReason().isBlank()
+                                ? relocation.getStaffReportReason()
+                                : "Landlord-fault relocation")
+                        : "Tenant-initiated relocation")
+                .replacedAt(Instant.now())
+                .build();
+        outboxPublisher.enqueue(
+                "contract.replaced",
+                old.getId().toString(),
+                event,
+                event.getMessageId());
     }
 
     private boolean isPaidDeposit(DepositStatus status) {
@@ -1737,6 +1826,7 @@ public class EContractServiceImpl implements EContractService {
             ContractReadyForLandlordSignatureEvent event = ContractReadyForLandlordSignatureEvent.builder()
                     .messageId(UUID.randomUUID().toString())
                     .contractId(contract.getId())
+                    .houseId(contract.getHouseId())
                     .recipientUserId(contract.getCreatedBy())
                     .tenantId(contract.getUserId())
                     .tenantName(contract.getTenantName())
@@ -2034,6 +2124,36 @@ public class EContractServiceImpl implements EContractService {
     private UUID resolveInternalTenantId(UUID callerId) {
         UserResponse user = userGrpc.getUserIdAndRoleByKeyCloakId(callerId.toString());
         return UUID.fromString(user.getId());
+    }
+
+    private Optional<UUID> findExistingTenantIdByEmail(String email, String jwtToken) {
+        try {
+            UserResponse existing = userGrpc.getUserByEmail(email, jwtToken);
+            if (existing == null || existing.getId() == null || existing.getId().isBlank()) {
+                return Optional.empty();
+            }
+            return Optional.of(UUID.fromString(existing.getId()));
+        } catch (StatusRuntimeException e) {
+            if (e.getStatus().getCode() == Status.Code.NOT_FOUND) {
+                return Optional.empty();
+            }
+            throw e;
+        }
+    }
+
+    private String resolveTenantEmail(UUID tenantUserId) {
+        if (tenantUserId == null) return null;
+        try {
+            UserResponse user = userGrpc.getUserById(tenantUserId.toString());
+            return user != null ? user.getEmail() : null;
+        } catch (StatusRuntimeException e) {
+            log.warn("[EContract] resolveTenantEmail failed userId={} code={}: {}",
+                    tenantUserId, e.getStatus().getCode(), e.getMessage());
+            return null;
+        } catch (Exception e) {
+            log.warn("[EContract] resolveTenantEmail unexpected userId={}: {}", tenantUserId, e.getMessage());
+            return null;
+        }
     }
 
     private String resolveUserLanguage(CreateEContractRequest req) {

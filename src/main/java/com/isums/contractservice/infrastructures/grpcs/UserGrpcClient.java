@@ -18,6 +18,12 @@ public class UserGrpcClient {
         return stub.withCallCredentials(new BearerTokenCallCredentials(jwtToken)).getUserByEmail(req);
     }
 
+    public UserResponse getUserByEmail(String email) {
+        String token = tokenProvider.getToken();
+        GetUserByEmailRequest req = GetUserByEmailRequest.newBuilder().setEmail(email).build();
+        return stub.withCallCredentials(new BearerTokenCallCredentials(token)).getUserByEmail(req);
+    }
+
     public GetUserRolesResponse getUserRoles(String keycloakId, String jwtToken) {
         GetUserRolesRequest req = GetUserRolesRequest.newBuilder().setKeycloakId(keycloakId).build();
         return stub.withCallCredentials(new BearerTokenCallCredentials(jwtToken)).getUserRoles(req);

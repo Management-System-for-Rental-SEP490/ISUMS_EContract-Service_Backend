@@ -22,12 +22,6 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll()
-                        // Public lookup data (country list, etc.) — no
-                        // authentication needed because the values are
-                        // static reference data, not user content. The
-                        // path lives under /api/econtracts/lookups so the
-                        // existing gateway route /api/econtracts/** picks
-                        // it up without needing a gateway redeploy.
                         .requestMatchers("/api/econtracts/lookups/**").permitAll()
                         .requestMatchers(
                                 "/api/econtracts/v3/api-docs",

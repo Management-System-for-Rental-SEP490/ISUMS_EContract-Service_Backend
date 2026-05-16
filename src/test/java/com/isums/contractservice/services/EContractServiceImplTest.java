@@ -2,9 +2,16 @@ package com.isums.contractservice.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.isums.contractservice.domains.dtos.*;
+import com.isums.contractservice.domains.entities.ContractRelocationRequest;
 import com.isums.contractservice.domains.entities.EContract;
+import com.isums.contractservice.domains.enums.DepositHandling;
+import com.isums.contractservice.domains.enums.DepositStatus;
 import com.isums.contractservice.domains.enums.EContractStatus;
+import com.isums.contractservice.domains.enums.RelocationFaultParty;
+import com.isums.contractservice.domains.enums.RelocationRequestKind;
+import com.isums.contractservice.domains.enums.RelocationRequestStatus;
 import com.isums.contractservice.domains.events.ContractReadyForLandlordSignatureEvent;
+import com.isums.contractservice.domains.events.ContractReplacedEvent;
 import com.isums.contractservice.domains.events.DepositRefundConfirmedEvent;
 import com.isums.contractservice.exceptions.NotFoundException;
 import com.isums.contractservice.infrastructures.abstracts.VnptEContractClient;
@@ -15,6 +22,7 @@ import com.isums.contractservice.infrastructures.mappers.EContractMapper;
 import com.isums.contractservice.infrastructures.repositories.EContractRepository;
 import com.isums.contractservice.infrastructures.repositories.EContractTemplateRepository;
 import com.isums.contractservice.infrastructures.repositories.LandlordProfileRepository;
+import com.isums.contractservice.infrastructures.repositories.ContractRelocationRequestRepository;
 import com.isums.contractservice.infrastructures.repositories.RenewalRequestRepository;
 import com.isums.userservice.grpc.UserResponse;
 import common.paginations.cache.CachedPageService;
@@ -66,6 +74,7 @@ class EContractServiceImplTest {
     @Mock private EContractRepository contractRepo;
     @Mock private EContractTemplateRepository templateRepo;
     @Mock private LandlordProfileRepository landlordRepo;
+    @Mock private ContractRelocationRequestRepository relocationRequestRepo;
     @Mock private EContractMapper mapper;
     @Mock private S3Service s3;
     @Mock private ObjectMapper json;
@@ -665,6 +674,7 @@ class EContractServiceImplTest {
 
             ContractReadyForLandlordSignatureEvent event = (ContractReadyForLandlordSignatureEvent) cap.getValue();
             assertThat(event.contractId()).isEqualTo(contractId);
+            assertThat(event.houseId()).isEqualTo(houseId);
             assertThat(event.recipientUserId()).isEqualTo(actorId);
             assertThat(event.tenantId()).isEqualTo(tenantId);
             assertThat(event.tenantName()).isEqualTo("Alice");
@@ -879,6 +889,57 @@ class EContractServiceImplTest {
                     com.isums.contractservice.domains.enums.TenantType.VIETNAMESE, null);
             String locale = (String) ReflectionTestUtils.invokeMethod(service, "resolveUserLanguage", req);
             assertThat(locale).isEqualTo("vi_VN");
+        }
+    }
+
+    @Nested
+    @DisplayName("completeRelocationReplacement")
+    class CompleteRelocationReplacement {
+
+        @Test
+        @DisplayName("non-active relocation publishes house replacement after replacement contract completes")
+        void publishesReplacementAfterCompletion() {
+            UUID oldContractId = UUID.randomUUID();
+            UUID newContractId = UUID.randomUUID();
+            UUID oldHouseId = UUID.randomUUID();
+            UUID newHouseId = UUID.randomUUID();
+            EContract oldContract = contract(EContractStatus.REPLACED_AFTER_DEPOSIT);
+            oldContract.setId(oldContractId);
+            oldContract.setHouseId(oldHouseId);
+            oldContract.setReplacedByContractId(newContractId);
+            EContract replacement = contract(EContractStatus.COMPLETED);
+            replacement.setId(newContractId);
+            replacement.setHouseId(newHouseId);
+            replacement.setRelocationSourceContractId(oldContractId);
+            ContractRelocationRequest relocation = ContractRelocationRequest.builder()
+                    .id(UUID.randomUUID())
+                    .oldContractId(oldContractId)
+                    .newContractId(newContractId)
+                    .tenantId(tenantId)
+                    .oldHouseId(oldHouseId)
+                    .approvedHouseId(newHouseId)
+                    .requestKind(RelocationRequestKind.LANDLORD_FAULT_UNINHABITABLE)
+                    .faultParty(RelocationFaultParty.LANDLORD)
+                    .depositHandling(DepositHandling.TRANSFER_TO_REPLACEMENT)
+                    .depositStatusSnapshot(DepositStatus.PAID)
+                    .transferredDepositAmount(10_000_000L)
+                    .status(RelocationRequestStatus.CONTRACT_CREATED)
+                    .build();
+
+            when(relocationRequestRepo.findByNewContractId(newContractId)).thenReturn(Optional.of(relocation));
+            when(contractRepo.findById(oldContractId)).thenReturn(Optional.of(oldContract));
+            when(relocationRequestRepo.save(any(ContractRelocationRequest.class))).thenAnswer(i -> i.getArgument(0));
+
+            ReflectionTestUtils.invokeMethod(service, "completeRelocationReplacement", replacement);
+
+            assertThat(relocation.getStatus()).isEqualTo(RelocationRequestStatus.COMPLETED);
+            ArgumentCaptor<ContractReplacedEvent> eventCaptor = ArgumentCaptor.forClass(ContractReplacedEvent.class);
+            verify(outboxPublisher).enqueue(eq("contract.replaced"), eq(oldContractId.toString()),
+                    eventCaptor.capture(), anyString());
+            assertThat(eventCaptor.getValue().getOldHouseId()).isEqualTo(oldHouseId);
+            assertThat(eventCaptor.getValue().getNewHouseId()).isEqualTo(newHouseId);
+            assertThat(eventCaptor.getValue().getNewContractId()).isEqualTo(newContractId);
+            assertThat(eventCaptor.getValue().isKeepHouseUnavailable()).isTrue();
         }
     }
 }
