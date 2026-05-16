@@ -5,6 +5,7 @@ import com.isums.contractservice.domains.entities.ContractRelocationRequest;
 import com.isums.contractservice.domains.enums.DepositStatus;
 import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.enums.RelocationFaultParty;
+import com.isums.contractservice.domains.enums.RelocationRequestKind;
 import com.isums.contractservice.domains.enums.RelocationRequestStatus;
 import com.isums.contractservice.domains.events.*;
 import com.isums.contractservice.infrastructures.grpcs.UserGrpcClient;
@@ -218,6 +219,14 @@ public class PaymentEventListeners {
 
             ContractRelocationRequest relocation = relocationRepo
                     .findByNewContractId(newContractId).orElse(null);
+            if (relocation != null
+                    && relocation.getRequestKind() == RelocationRequestKind.ACTIVE_LEASE_TENANT_UPGRADE) {
+                idempotencyService.markProcessed(messageId);
+                ack.acknowledge();
+                log.info("[Contract] Active-lease relocation waits for handover oldContractId={} newContractId={}",
+                        oldContractId, newContractId);
+                return;
+            }
 
             oldContract.getStatus().validateTransition(EContractStatus.REPLACED_AFTER_DEPOSIT);
             oldContract.setStatus(EContractStatus.REPLACED_AFTER_DEPOSIT);

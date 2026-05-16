@@ -810,13 +810,13 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
         relocation.setContractCreatedAt(Instant.now());
         relocationRepo.save(relocation);
 
+        if (relocation.getRequestKind() != RelocationRequestKind.ACTIVE_LEASE_TENANT_UPGRADE) {
+            publishContractReplaced(old, replacement.getId(), relocation);
+        }
+
         if (relocation.getDepositHandling() == DepositHandling.CANCEL_PENDING_DEPOSIT) {
             publishCancelPendingDeposit(old, relocation);
             relocationRepo.save(relocation);
-        }
-
-        if (oldNextStatus != EContractStatus.PENDING_REPLACEMENT_HANDOVER) {
-            publishContractReplaced(old, replacement.getId(), relocation);
         }
 
         log.info("[Relocation] CONTRACT_CREATED id={} oldContractId={} newContractId={} oldStatus={}",

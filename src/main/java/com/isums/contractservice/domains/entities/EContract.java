@@ -228,6 +228,9 @@ public class EContract implements Serializable {
     @Column(name = "tenant_name")
     private String tenantName;
 
+    @Column(name = "tenant_email")
+    private String tenantEmail;
+
     @Column(name = "cccd_verified_at")
     private Instant cccdVerifiedAt;
 

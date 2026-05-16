@@ -692,6 +692,7 @@ class ContractRelocationServiceImplTest {
             // Relocation status: CONTRACT_CREATED
             assertThat(r.getStatus()).isEqualTo(RelocationRequestStatus.CONTRACT_CREATED);
             assertThat(r.getNewContractId()).isEqualTo(newContractId);
+            verify(outboxPublisher, never()).enqueue(eq("contract.replaced"), anyString(), any(), anyString());
         }
 
         @Test
@@ -728,8 +729,10 @@ class ContractRelocationServiceImplTest {
 
             service.createReplacementContract(r.getId(), kcId, true, "jwt");
 
-            // Pre-handover terminates old contract immediately
+            // Pre-handover terminates old contract immediately, but house handoff waits
+            // until the replacement contract is completed.
             assertThat(old.getStatus()).isEqualTo(EContractStatus.REPLACED_AFTER_DEPOSIT);
+            verify(outboxPublisher, never()).enqueue(eq("contract.replaced"), anyString(), any(), anyString());
         }
     }
 

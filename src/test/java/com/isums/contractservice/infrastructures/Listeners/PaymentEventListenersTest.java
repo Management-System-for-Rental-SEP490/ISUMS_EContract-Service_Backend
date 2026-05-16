@@ -1,11 +1,15 @@
 package com.isums.contractservice.infrastructures.Listeners;
 
 import com.isums.contractservice.domains.entities.EContract;
+import com.isums.contractservice.domains.entities.ContractRelocationRequest;
 import com.isums.contractservice.domains.enums.EContractStatus;
+import com.isums.contractservice.domains.enums.RelocationRequestKind;
+import com.isums.contractservice.domains.enums.RelocationRequestStatus;
 import com.isums.contractservice.domains.events.*;
 import com.isums.contractservice.infrastructures.grpcs.UserGrpcClient;
 import com.isums.contractservice.infrastructures.repositories.EContractRepository;
 import com.isums.contractservice.infrastructures.repositories.ContractRelocationRequestRepository;
+import com.isums.contractservice.services.OutboxPublisher;
 import com.isums.userservice.grpc.UserResponse;
 import common.kafkas.IdempotencyService;
 import common.kafkas.KafkaListenerHelper;
@@ -46,6 +50,7 @@ class PaymentEventListenersTest {
     @Mock private IdempotencyService idempotencyService;
     @Mock private KafkaListenerHelper kafkaHelper;
     @Mock private UserGrpcClient userGrpcClient;
+    @Mock private OutboxPublisher outboxPublisher;
     @Mock private Acknowledgment ack;
 
     @InjectMocks private PaymentEventListeners listener;
@@ -55,6 +60,51 @@ class PaymentEventListenersTest {
                 .id(UUID.randomUUID()).userId(UUID.randomUUID())
                 .houseId(UUID.randomUUID()).createdBy(UUID.randomUUID())
                 .tenantName("Alice").status(status).build();
+    }
+
+    @Nested
+    @DisplayName("handleNewContractActivated")
+    class NewContractActivated {
+
+        private final ConsumerRecord<String, String> rec =
+                new ConsumerRecord<>("deposit-paid-enriched-topic", 0, 0L, "k", "v");
+
+        @Test
+        @DisplayName("active-lease relocation waits for explicit handover")
+        void activeLeaseWaitsForHandover() throws Exception {
+            UUID oldContractId = UUID.randomUUID();
+            UUID newContractId = UUID.randomUUID();
+            EContract newContract = contract(EContractStatus.COMPLETED);
+            newContract.setId(newContractId);
+            newContract.setRelocationSourceContractId(oldContractId);
+            EContract oldContract = contract(EContractStatus.PENDING_REPLACEMENT_HANDOVER);
+            oldContract.setId(oldContractId);
+            ContractRelocationRequest relocation = ContractRelocationRequest.builder()
+                    .id(UUID.randomUUID())
+                    .oldContractId(oldContractId)
+                    .newContractId(newContractId)
+                    .requestKind(RelocationRequestKind.ACTIVE_LEASE_TENANT_UPGRADE)
+                    .status(RelocationRequestStatus.CONTRACT_CREATED)
+                    .build();
+            DepositPaidEvent event = DepositPaidEvent.builder()
+                    .contractId(newContractId)
+                    .build();
+
+            when(kafkaHelper.extractMessageId(rec)).thenReturn("m1");
+            when(idempotencyService.isDuplicate("m1")).thenReturn(false);
+            when(objectMapper.readValue("v", DepositPaidEvent.class)).thenReturn(event);
+            when(contractRepo.findById(newContractId)).thenReturn(Optional.of(newContract));
+            when(contractRepo.findById(oldContractId)).thenReturn(Optional.of(oldContract));
+            when(relocationRepo.findByNewContractId(newContractId)).thenReturn(Optional.of(relocation));
+
+            listener.handleNewContractActivated(rec, ack);
+
+            assertThat(oldContract.getStatus()).isEqualTo(EContractStatus.PENDING_REPLACEMENT_HANDOVER);
+            assertThat(relocation.getStatus()).isEqualTo(RelocationRequestStatus.CONTRACT_CREATED);
+            verify(outboxPublisher, never()).enqueue(eq("contract.replaced"), anyString(), any(), anyString());
+            verify(idempotencyService).markProcessed("m1");
+            verify(ack).acknowledge();
+        }
     }
 
     @Nested

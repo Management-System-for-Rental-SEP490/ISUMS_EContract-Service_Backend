@@ -9,6 +9,8 @@ import java.util.UUID;
 public record ConfirmAndSendToTenantEvent(
         String messageId,
         UUID recipientUserId,
+        String recipientEmail,
+        String recipientName,
         UUID contractId,
         String contractName,
         String url,

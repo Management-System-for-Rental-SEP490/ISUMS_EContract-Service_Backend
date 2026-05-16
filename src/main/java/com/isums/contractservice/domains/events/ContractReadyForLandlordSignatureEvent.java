@@ -8,6 +8,7 @@ import java.util.UUID;
 public record ContractReadyForLandlordSignatureEvent(
         String messageId,
         UUID contractId,
+        UUID houseId,
         UUID recipientUserId,
         UUID tenantId,
         String tenantName,

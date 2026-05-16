@@ -22,14 +22,17 @@ public class KafkaConsumerConfig {
         );
 
         ExponentialBackOff backOff = new ExponentialBackOff(1000L, 2.0);
-        backOff.setMaxAttempts(3);
+        backOff.setMaxInterval(60_000L);
+        backOff.setMaxAttempts(Long.MAX_VALUE);
 
         DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
 
         handler.addNotRetryableExceptions(
                 org.springframework.messaging.converter.MessageConversionException.class,
                 com.fasterxml.jackson.core.JsonProcessingException.class,
-                IllegalArgumentException.class
+                IllegalArgumentException.class,
+                org.springframework.dao.DataIntegrityViolationException.class,
+                org.hibernate.exception.ConstraintViolationException.class
         );
 
         return handler;
