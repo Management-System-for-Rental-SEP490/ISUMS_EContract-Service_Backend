@@ -39,6 +39,8 @@ public interface EContractService {
 
     void resendTenantSignatureNotification(UUID contractId);
 
+    void resendContractCompletedEvent(UUID contractId, String overrideTenantEmail);
+
     ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode);
 
     ProcessResponse signByTenant(VnptProcessDto process);

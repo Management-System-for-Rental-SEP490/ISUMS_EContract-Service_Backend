@@ -570,6 +570,37 @@ public class EContractController {
     }
 
     @Operation(
+            summary = "[ADMIN] Re-emit ContractCompleted event after fixing tenant email",
+            description = """
+                    Recovery endpoint for contracts whose deposit-payment email failed because
+                    `tenantEmail` was blank when the contract reached COMPLETED. Caller may pass
+                    `tenantEmail` to overwrite the contract's email before re-emitting; if omitted,
+                    the existing DB value (and user-service lookup) are used as-is.
+
+                    Re-emits `contract-completed-topic` via the Outbox. Payment-service will dedupe
+                    on the DEPOSIT periodKey, so the deposit invoice is not recreated — only the
+                    payment-link email is re-sent to the tenant.
+                    """,
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "ContractCompleted event re-emitted"),
+            @ApiResponse(responseCode = "403", description = "Only LANDLORD or MANAGER may resend"),
+            @ApiResponse(responseCode = "404", description = "Contract not found"),
+            @ApiResponse(responseCode = "422", description = "Contract is not COMPLETED")
+    })
+    @PostMapping("/{contractId}/admin/resend-completion")
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<Void> resendContractCompleted(
+            @Parameter(description = "Contract ID", required = true) @PathVariable UUID contractId,
+            @RequestBody(required = false) ResendCompletionRequest body) {
+        String overrideEmail = body == null ? null : body.tenantEmail();
+        service.resendContractCompletedEvent(contractId, overrideEmail);
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(
+                null, "ContractCompleted event re-emitted");
+    }
+
+    @Operation(
             summary = "[TENANT] 契約を拒否 / キャンセル",
             description = """
                     Tenant が契約を拒否します。

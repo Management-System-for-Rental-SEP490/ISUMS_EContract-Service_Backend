@@ -676,6 +676,39 @@ public class EContractServiceImpl implements EContractService {
     }
 
     @Override
+    @Transactional
+    public void resendContractCompletedEvent(UUID contractId, String overrideTenantEmail) {
+        EContract contract = findById(contractId);
+
+        if (contract.getStatus() != EContractStatus.COMPLETED) {
+            throw new IllegalStateException(
+                    "Resend ContractCompleted is only allowed when contract is COMPLETED. Current: "
+                            + contract.getStatus());
+        }
+
+        if (overrideTenantEmail != null && !overrideTenantEmail.isBlank()) {
+            contract.setTenantEmail(overrideTenantEmail.trim());
+            contractRepo.save(contract);
+            log.info("[EContract] resendContractCompletedEvent overrode tenantEmail contractId={} email={}",
+                    contractId, overrideTenantEmail);
+        }
+
+        String signedPdfUrl = null;
+        if (contract.getSnapshotKey() != null && !contract.getSnapshotKey().isBlank()) {
+            try {
+                signedPdfUrl = s3.presignedUrl(contract.getSnapshotKey(), 7 * 24 * 60);
+            } catch (Exception ex) {
+                log.warn("[EContract] resendContractCompletedEvent: presign failed contractId={}: {}",
+                        contractId, ex.getMessage());
+            }
+        }
+
+        sendContractCompletedEvent(contract, signedPdfUrl);
+        log.info("[EContract] Replayed ContractCompleted contractId={} tenantEmail={}",
+                contractId, contract.getTenantEmail());
+    }
+
+    @Override
     public ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode) {
         try {
             ProcessLoginInfoDto result = parseProcessLogin(vnptClient.getAccessInfoByProcessCode(processCode));
@@ -1634,6 +1667,13 @@ public class EContractServiceImpl implements EContractService {
                                 tenantEmail, emailEx.getMessage());
                     }
                 }
+            }
+
+            if (tenantEmail == null || tenantEmail.isBlank()) {
+                log.error("[EContract] sendContractCompletedEvent: tenantEmail UNRESOLVED contractId={} userId={} — deposit invoice will be created but no payment email will be sent. Manager must call POST /api/econtracts/{id}/admin/resend-completion to recover.",
+                        contract.getId(), contract.getUserId());
+                sendWsStatus(contract.getId(), "TENANT_EMAIL_MISSING",
+                        "Hợp đồng đã ký xong nhưng không gửi được email thanh toán cọc do không xác định được email người thuê. Vui lòng vào trang quản lý để gửi lại.");
             }
 
             Instant depositDueAt = null;
