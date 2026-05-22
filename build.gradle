@@ -69,7 +69,7 @@ dependencies {
     implementation 'net.logstash.logback:logstash-logback-encoder:8.1'
     implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
     implementation 'io.micrometer:micrometer-tracing-bridge-otel'
-    implementation 'com.isums:isums-observability-common:1.0-SNAPSHOT'
+    implementation 'com.isums:isums-observability-common:1.1.0'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
