@@ -42,7 +42,8 @@ public class SecurityConfig {
                                 "/api/econtracts/ws",
                                 "/api/econtracts/ws/**",
                                 "/api/econtracts/*/pdf-url",
-                                "/api/econtracts/*/tenant-cancel"
+                                "/api/econtracts/*/tenant-cancel",
+                                "/api/system/maintenance/status"
                         ).permitAll()
                         .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated()
