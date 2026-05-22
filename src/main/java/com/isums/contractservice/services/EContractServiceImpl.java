@@ -113,6 +113,9 @@ public class EContractServiceImpl implements EContractService {
     @Value("${ocr.service.url}")
     private String ocrUrl;
 
+    @Value("${ocr.service.shared-secret:}")
+    private String ocrSharedSecret;
+
     @Value("${vnpt.landlord.username}")
     private String vnptLandlordUsername;
 
@@ -373,8 +376,12 @@ public class EContractServiceImpl implements EContractService {
         validateImage(frontImage, "front");
         validateImage(backImage, "back");
 
+        sendCccdProgress(contractId, "OCR_START");
+
         OcrResult ocrFront = callOcrCccdQuickVerify(
                 frontImage, backImage, c.getCccdNumber(), c.getTenantName());
+
+        sendCccdProgress(contractId, "PDF_ASSEMBLY");
 
         s3.deleteIfExists(c.getCccdFrontKey());
         s3.deleteIfExists(c.getCccdBackKey());
@@ -399,12 +406,16 @@ public class EContractServiceImpl implements EContractService {
 
         log.info("[EContract] finalPdf size={}KB contractId={}", finalPdf.length / 1024, contractId);
 
+        sendCccdProgress(contractId, "VNPT_UPLOAD");
+
         String token = vnptClient.getToken();
         VnptDocumentDto document = ensureVnptDocument(c, finalPdf, token);
         String documentId = document.id();
 
         s3.deleteIfExists(frontKey);
         s3.deleteIfExists(backKey);
+
+        sendCccdProgress(contractId, "FINALIZING");
 
         c.setDocumentId(documentId);
         c.setDocumentNo(document.no());
@@ -429,6 +440,7 @@ public class EContractServiceImpl implements EContractService {
         if (sendResult == null || sendResult.getData() == null) {
             c.setStatus(EContractStatus.PENDING_TENANT_REVIEW);
             contractRepo.save(c);
+            sendCccdProgress(contractId, "FAILED");
             throw new IllegalStateException("VNPT sendProcess failed: "
                     + (sendResult != null ? sendResult.getMessage() : "null"));
         }
@@ -441,6 +453,8 @@ public class EContractServiceImpl implements EContractService {
 
         cachedPageService.evictAll(PAGE_NS);
         sendReadyForLandlordSignatureEvent(c);
+
+        sendCccdProgress(contractId, "COMPLETE");
 
         return sendResult.getData();
     }
@@ -940,6 +954,20 @@ public class EContractServiceImpl implements EContractService {
         }
     }
 
+    private void sendCccdProgress(UUID contractId, String stage) {
+        try {
+            Map<String, Object> payload = Map.of(
+                    "contractId", contractId.toString(),
+                    "kind", "CCCD_PROGRESS",
+                    "stage", stage,
+                    "ts", System.currentTimeMillis());
+            ws.convertAndSend("/topic/contract/" + contractId + "/status", (Object) payload);
+        } catch (Exception e) {
+            log.warn("[WS] CCCD progress send failed contractId={} stage={}: {}",
+                    contractId, stage, e.getMessage());
+        }
+    }
+
     private OcrResult callOcrFrontAndValidate(MultipartFile file, String expectedId, String expectedName) {
         try {
             JsonNode node = callOcr(file, "/ocr/cccd");
@@ -1140,10 +1168,13 @@ public class EContractServiceImpl implements EContractService {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("front", multipartResource(frontImage));
         body.add("back", multipartResource(backImage));
-        String raw = RestClient.create().post()
+        var spec = RestClient.create().post()
                 .uri(ocrUrl + "/ocr/cccd/verify")
-                .contentType(MediaType.MULTIPART_FORM_DATA)
-                .body(body).retrieve().body(String.class);
+                .contentType(MediaType.MULTIPART_FORM_DATA);
+        if (ocrSharedSecret != null && !ocrSharedSecret.isBlank()) {
+            spec = spec.header("X-OCR-Secret", ocrSharedSecret);
+        }
+        String raw = spec.body(body).retrieve().body(String.class);
         if (raw == null || raw.isBlank()) {
             throw new IllegalStateException("OCR service returned an empty response");
         }
@@ -1153,10 +1184,13 @@ public class EContractServiceImpl implements EContractService {
     private JsonNode callOcr(MultipartFile file, String path) throws Exception {
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("image", multipartResource(file));
-        String raw = RestClient.create().post()
+        var spec = RestClient.create().post()
                 .uri(ocrUrl + path)
-                .contentType(MediaType.MULTIPART_FORM_DATA)
-                .body(body).retrieve().body(String.class);
+                .contentType(MediaType.MULTIPART_FORM_DATA);
+        if (ocrSharedSecret != null && !ocrSharedSecret.isBlank()) {
+            spec = spec.header("X-OCR-Secret", ocrSharedSecret);
+        }
+        String raw = spec.body(body).retrieve().body(String.class);
         if (raw == null || raw.isBlank()) {
             throw new IllegalStateException("OCR service returned an empty response");
         }
