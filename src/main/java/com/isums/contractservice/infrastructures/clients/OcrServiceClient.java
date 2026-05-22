@@ -25,6 +25,9 @@ public class OcrServiceClient {
     @Value("${ocr.service.url:http://ocr-service:9000}")
     private String ocrServiceUrl;
 
+    @Value("${ocr.service.shared-secret:}")
+    private String ocrSharedSecret;
+
     public TenantIdentityDto extractCccd(MultipartFile image) {
         try {
             String response = postImage("/ocr/cccd", image);
@@ -61,11 +64,12 @@ public class OcrServiceClient {
         };
         body.add("image", resource);
 
-        return restClient.post()
+        var spec = restClient.post()
                 .uri(ocrServiceUrl + path)
-                .contentType(MediaType.MULTIPART_FORM_DATA)
-                .body(body)
-                .retrieve()
-                .body(String.class);
+                .contentType(MediaType.MULTIPART_FORM_DATA);
+        if (ocrSharedSecret != null && !ocrSharedSecret.isBlank()) {
+            spec = spec.header("X-OCR-Secret", ocrSharedSecret);
+        }
+        return spec.body(body).retrieve().body(String.class);
     }
 }
