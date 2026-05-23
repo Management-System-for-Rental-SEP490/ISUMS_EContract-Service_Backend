@@ -823,6 +823,79 @@ public class EContractServiceImpl implements EContractService {
 
     @Override
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "user-contracts", allEntries = true),
+            @CacheEvict(value = "user-house-access", allEntries = true),
+            @CacheEvict(value = "marketplace-bookable", allEntries = true),
+            @CacheEvict(value = "marketplace-locked", allEntries = true)
+    })
+    public void forceCancelExpiredDeposit(UUID contractId, UUID actorId) {
+        EContract c = findById(contractId);
+        if (c.getStatus() != EContractStatus.COMPLETED) {
+            throw new IllegalStateException(
+                    "Contract must be COMPLETED to force-cancel expired deposit. Current: " + c.getStatus());
+        }
+        if (c.getDepositStatus() != com.isums.contractservice.domains.enums.DepositStatus.UNPAID) {
+            throw new IllegalStateException(
+                    "Deposit is " + c.getDepositStatus() + " — only UNPAID deposits may be force-cancelled.");
+        }
+
+        Instant now = Instant.now();
+        c.getStatus().validateTransition(EContractStatus.CANCELLED_BY_LANDLORD);
+        c.setStatus(EContractStatus.CANCELLED_BY_LANDLORD);
+        c.setDepositDueAt(null);
+        c.setTerminatedAt(now);
+        c.setTerminatedBy(actorId);
+        c.setTerminatedReason("Deposit not paid — landlord forced cancellation");
+        contractRepo.save(c);
+
+        String tenantEmail = null;
+        String tenantName = null;
+        try {
+            com.isums.userservice.grpc.UserResponse u = userGrpc.getUserById(c.getUserId().toString());
+            if (u != null) {
+                tenantEmail = u.getEmail();
+                tenantName = u.getName();
+            }
+        } catch (Exception e) {
+            log.warn("[EContract] forceCancel tenant lookup failed userId={}: {}",
+                    c.getUserId(), e.getMessage());
+        }
+
+        String contractNo = c.getDocumentNo() != null
+                ? c.getDocumentNo()
+                : c.getId().toString().substring(0, 8).toUpperCase();
+        String messageId = UUID.randomUUID().toString();
+
+        com.isums.contractservice.domains.events.ContractDepositExpiredEvent event =
+                com.isums.contractservice.domains.events.ContractDepositExpiredEvent.builder()
+                        .contractId(c.getId())
+                        .tenantId(c.getUserId())
+                        .houseId(c.getHouseId())
+                        .landlordId(c.getCreatedBy())
+                        .tenantEmail(tenantEmail)
+                        .tenantName(tenantName)
+                        .contractNo(contractNo)
+                        .depositAmount(c.getDepositAmount())
+                        .depositDueAt(null)
+                        .expiredAt(now)
+                        .messageId(messageId)
+                        .build();
+
+        outboxPublisher.enqueue(
+                "contract.deposit-expired",
+                c.getId().toString(),
+                event,
+                messageId);
+
+        log.info("[EContract] FORCE-CANCELLED expired deposit contractId={} contractNo={} actorId={} tenant={}",
+                c.getId(), contractNo, actorId, tenantEmail);
+
+        cachedPageService.evictAll(PAGE_NS);
+    }
+
+    @Override
+    @Transactional
     @CacheEvict(allEntries = true, value = "allEContracts")
     public void deleteContract(UUID contractId, UUID actorId) {
         EContract c = findById(contractId);

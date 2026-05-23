@@ -407,6 +407,92 @@ class EContractServiceImplTest {
     }
 
     @Nested
+    @DisplayName("forceCancelExpiredDeposit")
+    class ForceCancelExpiredDeposit {
+
+        private EContract completedUnpaid() {
+            EContract c = contract(EContractStatus.COMPLETED);
+            c.setDepositStatus(DepositStatus.UNPAID);
+            c.setDepositAmount(5_000_000L);
+            c.setDocumentNo("EC-12345678");
+            c.setDepositDueAt(Instant.now().minusSeconds(3600));
+            return c;
+        }
+
+        @Test
+        @DisplayName("transitions COMPLETED+UNPAID to CANCELLED_BY_LANDLORD, clears depositDueAt, "
+                + "publishes contract.deposit-expired event, marks terminator audit fields")
+        void happy() {
+            EContract c = completedUnpaid();
+            when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
+            UserResponse tenant = UserResponse.newBuilder()
+                    .setId(tenantId.toString())
+                    .setEmail("tenant@example.com")
+                    .setName("Khach Thue").build();
+            when(userGrpc.getUserById(tenantId.toString())).thenReturn(tenant);
+
+            service.forceCancelExpiredDeposit(contractId, actorId);
+
+            assertThat(c.getStatus()).isEqualTo(EContractStatus.CANCELLED_BY_LANDLORD);
+            assertThat(c.getDepositDueAt()).isNull();
+            assertThat(c.getTerminatedBy()).isEqualTo(actorId);
+            assertThat(c.getTerminatedAt()).isNotNull();
+            assertThat(c.getTerminatedReason())
+                    .containsIgnoringCase("deposit").containsIgnoringCase("landlord");
+            verify(contractRepo).save(c);
+            verify(outboxPublisher).enqueue(
+                    eq("contract.deposit-expired"),
+                    eq(contractId.toString()),
+                    any(com.isums.contractservice.domains.events.ContractDepositExpiredEvent.class),
+                    anyString());
+        }
+
+        @Test
+        @DisplayName("still publishes event when tenant gRPC lookup fails (tenantEmail = null)")
+        void tenantLookupFails() {
+            EContract c = completedUnpaid();
+            when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
+            when(userGrpc.getUserById(tenantId.toString()))
+                    .thenThrow(new RuntimeException("user-service down"));
+
+            service.forceCancelExpiredDeposit(contractId, actorId);
+
+            assertThat(c.getStatus()).isEqualTo(EContractStatus.CANCELLED_BY_LANDLORD);
+            verify(outboxPublisher).enqueue(
+                    eq("contract.deposit-expired"), anyString(),
+                    any(com.isums.contractservice.domains.events.ContractDepositExpiredEvent.class),
+                    anyString());
+        }
+
+        @Test
+        @DisplayName("rejects when contract status is not COMPLETED")
+        void notCompleted() {
+            EContract c = contract(EContractStatus.IN_PROGRESS);
+            when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
+
+            assertThatThrownBy(() -> service.forceCancelExpiredDeposit(contractId, actorId))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("COMPLETED");
+            verify(contractRepo, never()).save(any(EContract.class));
+            verifyNoInteractions(outboxPublisher);
+        }
+
+        @Test
+        @DisplayName("rejects when depositStatus is already PAID")
+        void depositAlreadyPaid() {
+            EContract c = completedUnpaid();
+            c.setDepositStatus(DepositStatus.PAID);
+            when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
+
+            assertThatThrownBy(() -> service.forceCancelExpiredDeposit(contractId, actorId))
+                    .isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("UNPAID");
+            verify(contractRepo, never()).save(any(EContract.class));
+            verifyNoInteractions(outboxPublisher);
+        }
+    }
+
+    @Nested
     @DisplayName("cancelByTenant")
     class CancelByTenant {
 

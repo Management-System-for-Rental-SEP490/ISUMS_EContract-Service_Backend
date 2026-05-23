@@ -141,7 +141,7 @@ public class EContractController {
             @ApiResponse(responseCode = "403", description = "権限がありません")
     })
     @GetMapping
-    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER','TENANT')")
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
     public com.isums.contractservice.domains.dtos.ApiResponse<PageResponse<EContractDto>> getAll(
             @ParameterObject @Valid @ModelAttribute PageRequestParams params,
             org.springframework.security.core.Authentication auth) {
@@ -598,6 +598,47 @@ public class EContractController {
         service.resendContractCompletedEvent(contractId, overrideEmail);
         return com.isums.contractservice.domains.dtos.ApiResponses.ok(
                 null, "ContractCompleted event re-emitted");
+    }
+
+    @Operation(
+            summary = "[ADMIN] Force-cancel a contract whose deposit is overdue and release the house",
+            description = """
+                    Manual escalation of the auto-expiry path that
+                    ContractDepositExpiryScheduler runs hourly. Use this when the
+                    tenant has clearly lost the VNPay window (15-minute timeout) or
+                    the landlord doesn't want to wait the configured
+                    LandlordProfile.depositWaitDays (default 3) before listing the
+                    house again.
+
+                    Pre-conditions:
+                      - Contract status must be COMPLETED
+                      - depositStatus must be UNPAID
+
+                    Effect (identical to the scheduler):
+                      - Contract transitions to CANCELLED_BY_LANDLORD
+                      - depositDueAt cleared, terminatedAt / terminatedBy / terminatedReason set
+                      - `contract.deposit-expired` event is emitted via Outbox
+                          * payment-service marks the DEPOSIT invoice CANCELLED + emails the tenant
+                          * house-service releases the house (deactivateHouseForUser)
+                      - Cached marketplace / user-house pages invalidated so the house
+                        re-appears as bookable on the very next page render
+                    """,
+            security = @SecurityRequirement(name = "bearerAuth")
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Contract cancelled, house released"),
+            @ApiResponse(responseCode = "403", description = "Only LANDLORD or MANAGER may force-cancel"),
+            @ApiResponse(responseCode = "404", description = "Contract not found"),
+            @ApiResponse(responseCode = "422", description = "Contract is not COMPLETED+UNPAID")
+    })
+    @PostMapping("/{contractId}/admin/cancel-and-release")
+    @PreAuthorize("hasAnyRole('LANDLORD','MANAGER')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<Void> cancelAndRelease(
+            @Parameter(description = "Contract ID", required = true) @PathVariable UUID contractId,
+            @AuthenticationPrincipal Jwt jwt) {
+        service.forceCancelExpiredDeposit(contractId, actorId(jwt));
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(
+                null, "Contract cancelled and house released");
     }
 
     @Operation(

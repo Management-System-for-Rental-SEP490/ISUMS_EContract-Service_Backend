@@ -41,6 +41,8 @@ public interface EContractService {
 
     void resendContractCompletedEvent(UUID contractId, String overrideTenantEmail);
 
+    void forceCancelExpiredDeposit(UUID contractId, UUID actorId);
+
     ProcessLoginInfoDto getAccessInfoByProcessCode(String processCode);
 
     ProcessResponse signByTenant(VnptProcessDto process);
