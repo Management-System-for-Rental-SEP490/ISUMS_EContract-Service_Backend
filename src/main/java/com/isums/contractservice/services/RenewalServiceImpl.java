@@ -194,7 +194,7 @@ public class RenewalServiceImpl implements RenewalService {
                         .map(r -> r.getStatus().name()).orElse(null))
                 .hasCompetingDeposit(hasCompeting)
                 .daysUntilExpiry(daysUntilExpiry)
-                .windowOpenForNewTenants(daysUntilExpiry <= 0)
+                .windowOpenForNewTenants(daysUntilExpiry <= 30)
                 .build();
     }
 

@@ -22,6 +22,7 @@ import com.isums.contractservice.infrastructures.repositories.RenewalRequestRepo
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.infrastructures.abstracts.LegalTemplateService;
 import com.isums.contractservice.infrastructures.grpcs.HouseGrpcClient;
+import com.isums.contractservice.infrastructures.grpcs.PaymentGrpcClient;
 import com.isums.contractservice.infrastructures.grpcs.UserGrpcClient;
 import com.isums.contractservice.infrastructures.repositories.ContractCoTenantRepository;
 import com.isums.contractservice.infrastructures.repositories.ContractRelocationRequestRepository;
@@ -83,6 +84,7 @@ class ContractRelocationServiceImplTest {
     @Mock private EContractService eContractService;
     @Mock private HouseGrpcClient houseGrpc;
     @Mock private UserGrpcClient userGrpc;
+    @Mock private PaymentGrpcClient paymentGrpc;
     @Mock private OutboxPublisher outboxPublisher;
     @Mock private S3Service s3Service;
     @Mock private LegalTemplateService legalTemplateService;
@@ -446,6 +448,40 @@ class ContractRelocationServiceImplTest {
             assertThat(r.getStatus()).isEqualTo(RelocationRequestStatus.APPROVED);
             assertThat(r.getApprovedHouseId()).isEqualTo(houseIdNew);
             assertThat(r.getNewRentAmount()).isEqualTo(5_500_000L);
+        }
+
+        @Test
+        @DisplayName("repairs stale UNPAID snapshot when payment-service says old deposit is paid")
+        void staleUnpaidSnapshotWithPaidInvoiceTransfersDeposit() {
+            ContractRelocationRequest r = reloRow(RelocationRequestStatus.REQUESTED,
+                    RelocationRequestKind.PRE_HANDOVER_TENANT_REQUEST,
+                    RelocationFaultParty.LANDLORD, internalUserId, null);
+            r.setDepositStatusSnapshot(DepositStatus.UNPAID);
+            r.setDepositAmount(22_000_000L);
+            when(relocationRepo.findById(r.getId())).thenReturn(Optional.of(r));
+            EContract c = signedContract(internalUserId, houseIdOld, EContractStatus.COMPLETED, 22_000_000L);
+            c.setDepositStatus(DepositStatus.UNPAID);
+            when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
+            when(paymentGrpc.isDepositPaid(houseIdOld, internalUserId)).thenReturn(true);
+            when(houseGrpc.getHouseById(houseIdNew)).thenReturn(HouseResponse.newBuilder().setId(houseIdNew.toString()).build());
+            stubResolveInternal(kcId, internalUserId);
+            when(relocationRepo.save(any(ContractRelocationRequest.class))).thenAnswer(i -> i.getArgument(0));
+
+            ReviewRelocationRequest req = reviewBuilder(true)
+                    .resolutionType(RelocationResolutionType.REPLACE_HOUSE)
+                    .approvedHouseId(houseIdNew)
+                    .depositHandling(DepositHandling.CANCEL_PENDING_DEPOSIT)
+                    .newRentAmount(10_000_000L)
+                    .newDepositAmount(22_000_000L)
+                    .build();
+
+            service.review(r.getId(), kcId, true, req);
+
+            assertThat(c.getDepositStatus()).isEqualTo(DepositStatus.PAID);
+            assertThat(r.getDepositStatusSnapshot()).isEqualTo(DepositStatus.PAID);
+            assertThat(r.getDepositHandling()).isEqualTo(DepositHandling.TRANSFER_TO_REPLACEMENT);
+            assertThat(r.getTransferredDepositAmount()).isEqualTo(22_000_000L);
+            assertThat(r.getAdditionalDepositAmount()).isZero();
         }
 
         @Test

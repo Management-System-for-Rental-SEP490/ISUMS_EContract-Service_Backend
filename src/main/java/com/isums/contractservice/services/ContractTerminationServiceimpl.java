@@ -3,6 +3,7 @@ package com.isums.contractservice.services;
 import com.isums.contractservice.domains.entities.EContract;
 import com.isums.contractservice.domains.enums.DepositStatus;
 import com.isums.contractservice.domains.enums.EContractStatus;
+import com.isums.contractservice.domains.events.ContractTerminatedEvent;
 import com.isums.contractservice.domains.events.ForceTerminationEvent;
 import com.isums.contractservice.domains.events.InspectionScheduledEvent;
 import com.isums.contractservice.domains.events.JobCreatedEvent;
@@ -65,6 +66,15 @@ public class ContractTerminationServiceimpl implements ContractTerminationServic
                         .houseId(contract.getHouseId())
                         .managerId(contract.getCreatedBy())
                         .tenantName(contract.getTenantName())
+                        .messageId(UUID.randomUUID().toString())
+                        .build());
+
+        kafka.send("contract.access-ended",
+                contract.getId().toString(),
+                ContractTerminatedEvent.builder()
+                        .contractId(contract.getId())
+                        .houseId(contract.getHouseId())
+                        .tenantId(contract.getUserId())
                         .messageId(UUID.randomUUID().toString())
                         .build());
 

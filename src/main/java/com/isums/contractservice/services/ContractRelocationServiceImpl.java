@@ -30,6 +30,7 @@ import com.isums.contractservice.infrastructures.abstracts.ContractRelocationSer
 import com.isums.contractservice.infrastructures.abstracts.EContractService;
 import com.isums.contractservice.infrastructures.abstracts.LegalTemplateService;
 import com.isums.contractservice.infrastructures.grpcs.HouseGrpcClient;
+import com.isums.contractservice.infrastructures.grpcs.PaymentGrpcClient;
 import com.isums.contractservice.infrastructures.grpcs.UserGrpcClient;
 import com.isums.contractservice.infrastructures.repositories.ContractCoTenantRepository;
 import com.isums.contractservice.infrastructures.repositories.ContractRelocationRequestRepository;
@@ -99,6 +100,7 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
     private final EContractService eContractService;
     private final HouseGrpcClient houseGrpc;
     private final UserGrpcClient userGrpc;
+    private final PaymentGrpcClient paymentGrpc;
     private final OutboxPublisher outboxPublisher;
     private final S3Service s3Service;
     private final LegalTemplateService legalTemplateService;
@@ -134,7 +136,7 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
             throw new NotFoundException("Requested house not found: " + request.requestedHouseId());
         }
 
-        DepositStatus snapshot = inferDepositStatus(contract);
+        DepositStatus snapshot = reconcileDepositStatus(contract);
         boolean activeLeaseUpgrade = isActiveLeaseUpgrade(contract, request);
         // B10: sensible default — desiredMoveDate from request, else +7 days for active lease
         // (Housing Law 2023 Art. 172 implies notice period for changes), else null for pre-handover
@@ -274,7 +276,7 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
         assertCanActOnHouse(staffInternalId, landlord, contract.getHouseId());
 
         String evidence = uploadEvidenceFiles(contract.getId(), actorId, evidenceFiles, request.evidence());
-        DepositStatus snapshot = inferDepositStatus(contract);
+        DepositStatus snapshot = reconcileDepositStatus(contract);
         Instant now = Instant.now();
         String legalBasisSnapshot = legalTemplateService.resolveSnapshot(
                 LegalTemplateKey.RELOCATION_LANDLORD_FAULT_BASIS.name(),
@@ -430,6 +432,12 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
         EContract old = contractRepo.findById(relocation.getOldContractId())
                 .orElseThrow(() -> new NotFoundException("Contract not found: " + relocation.getOldContractId()));
+        DepositStatus oldDepositStatus = reconcileDepositStatus(old);
+        if (isPaidLike(oldDepositStatus) && !isPaidLike(relocation.getDepositStatusSnapshot())) {
+            log.warn("[Relocation] Snapshot repaired from {} to {} requestId={} oldContractId={}",
+                    relocation.getDepositStatusSnapshot(), oldDepositStatus, relocation.getId(), old.getId());
+            relocation.setDepositStatusSnapshot(oldDepositStatus);
+        }
 
         RelocationResolutionType resolutionType = request.resolutionType() != null
                 ? request.resolutionType()
@@ -480,6 +488,12 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
                 ? request.depositHandling()
                 : defaultHandling(relocation.getFaultParty(), relocation.getDepositStatusSnapshot(),
                         RelocationResolutionType.REPLACE_HOUSE);
+        if (handling == DepositHandling.CANCEL_PENDING_DEPOSIT
+                && isPaidLike(relocation.getDepositStatusSnapshot())) {
+            handling = DepositHandling.TRANSFER_TO_REPLACEMENT;
+            log.warn("[Relocation] Override CANCEL_PENDING_DEPOSIT to TRANSFER_TO_REPLACEMENT because old deposit is paid requestId={} oldContractId={}",
+                    relocation.getId(), old.getId());
+        }
         if (handling == DepositHandling.REFUND_TO_TENANT) {
             throw new IllegalArgumentException("Use REFUND_TERMINATE resolution for deposit refund");
         }
@@ -1105,6 +1119,26 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
             return contract.getDepositStatus();
         }
         return nz(contract.getDepositAmount()) == 0L ? DepositStatus.PAID : DepositStatus.PENDING;
+    }
+
+    private DepositStatus reconcileDepositStatus(EContract contract) {
+        DepositStatus current = inferDepositStatus(contract);
+        if (isPaidLike(current) || nz(contract.getDepositAmount()) == 0L) {
+            return current;
+        }
+        try {
+            if (paymentGrpc.isDepositPaid(contract.getHouseId(), contract.getUserId())) {
+                contract.setDepositStatus(DepositStatus.PAID);
+                contractRepo.save(contract);
+                log.warn("[Relocation] Reconciled stale deposit status contractId={} {} -> PAID",
+                        contract.getId(), current);
+                return DepositStatus.PAID;
+            }
+        } catch (Exception e) {
+            log.warn("[Relocation] Payment deposit reconcile failed contractId={} houseId={} tenantId={}: {}",
+                    contract.getId(), contract.getHouseId(), contract.getUserId(), e.getMessage());
+        }
+        return current;
     }
 
     private boolean isActiveLeaseUpgrade(EContract contract, CreateRelocationRequest request) {

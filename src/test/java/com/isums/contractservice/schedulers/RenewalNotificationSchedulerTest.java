@@ -5,6 +5,7 @@ import com.isums.contractservice.domains.entities.RenewalNotificationLog;
 import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.events.RenewalReminderEvent;
 import com.isums.contractservice.domains.events.RenewalWindowOpenEvent;
+import com.isums.contractservice.infrastructures.grpcs.UserGrpcClient;
 import com.isums.contractservice.infrastructures.repositories.EContractRepository;
 import com.isums.contractservice.infrastructures.repositories.RenewalNotificationLogRepository;
 import com.isums.contractservice.infrastructures.repositories.RenewalRequestRepository;
@@ -38,6 +39,7 @@ class RenewalNotificationSchedulerTest {
     @Mock private EContractRepository contractRepo;
     @Mock private RenewalNotificationLogRepository logRepo;
     @Mock private RenewalRequestRepository renewalRequestRepo;
+    @Mock private UserGrpcClient userGrpcClient;
     @Mock private KafkaTemplate<String, Object> kafka;
 
     @InjectMocks private RenewalNotificationScheduler scheduler;
@@ -56,9 +58,26 @@ class RenewalNotificationSchedulerTest {
     class Milestones {
 
         @Test
-        @DisplayName("sends RenewalReminderEvent at D-30 when no prior log and no existing request")
+        @DisplayName("sends RenewalReminderEvent and opens new-tenant window at D-30")
         void day30() {
             EContract c = contractEndingInDays(30);
+            when(contractRepo.findByStatusInAndEndAtBetween(anyList(), any(Instant.class), any(Instant.class)))
+                    .thenReturn(List.of(c));
+            when(renewalRequestRepo.existsByContractIdAndStatusNotIn(eq(c.getId()), anyList()))
+                    .thenReturn(false);
+            when(logRepo.existsByMilestoneKey(anyString())).thenReturn(false);
+
+            scheduler.processRenewalNotifications();
+
+            verify(kafka).send(eq("contract.renewal.reminder"), anyString(), any(RenewalReminderEvent.class));
+            verify(kafka).send(eq("contract.renewal-window.open"), anyString(), any(RenewalWindowOpenEvent.class));
+            verify(logRepo).save(any(RenewalNotificationLog.class));
+        }
+
+        @Test
+        @DisplayName("sends renewal reminder at D-60")
+        void day60() {
+            EContract c = contractEndingInDays(60);
             when(contractRepo.findByStatusInAndEndAtBetween(anyList(), any(Instant.class), any(Instant.class)))
                     .thenReturn(List.of(c));
             when(renewalRequestRepo.existsByContractIdAndStatusNotIn(eq(c.getId()), anyList()))
