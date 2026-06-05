@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -28,6 +29,7 @@ public class RelocationReconciliationScheduler {
     private final OutboxPublisher outboxPublisher;
 
     @Scheduled(fixedDelay = 600_000L, initialDelay = 60_000L)
+    @Transactional
     public void reconcileRecentlyCompleted() {
         Instant cutoff = Instant.now().minus(24, ChronoUnit.HOURS);
         List<ContractRelocationRequest> recent = relocationRepo
