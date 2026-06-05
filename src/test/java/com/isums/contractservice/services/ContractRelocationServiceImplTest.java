@@ -14,6 +14,7 @@ import com.isums.contractservice.domains.enums.RelocationFaultParty;
 import com.isums.contractservice.domains.enums.RelocationRequestKind;
 import com.isums.contractservice.domains.enums.RelocationRequestStatus;
 import com.isums.contractservice.domains.enums.RelocationResolutionType;
+import com.isums.contractservice.domains.events.ContractReplacedEvent;
 import com.isums.contractservice.exceptions.NotFoundException;
 import com.isums.contractservice.domains.dtos.DepositBookableHouseDto;
 import com.isums.contractservice.domains.enums.RenewalRequestStatus;
@@ -730,9 +731,14 @@ class ContractRelocationServiceImplTest {
             service.createReplacementContract(r.getId(), kcId, true, "jwt");
 
             // Pre-handover terminates old contract immediately, but house handoff waits
-            // until the replacement contract is completed.
+            // for the replacement house handover date carried by the event.
             assertThat(old.getStatus()).isEqualTo(EContractStatus.REPLACED_AFTER_DEPOSIT);
-            verify(outboxPublisher, never()).enqueue(eq("contract.replaced"), anyString(), any(), anyString());
+            ArgumentCaptor<ContractReplacedEvent> eventCaptor = ArgumentCaptor.forClass(ContractReplacedEvent.class);
+            verify(outboxPublisher).enqueue(eq("contract.replaced"), eq(contractId.toString()),
+                    eventCaptor.capture(), anyString());
+            assertThat(eventCaptor.getValue().getNewContractId()).isEqualTo(newContractId);
+            assertThat(eventCaptor.getValue().getNewHouseId()).isEqualTo(houseIdNew);
+            assertThat(eventCaptor.getValue().getNewHandoverDate()).isEqualTo(r.getNewHandoverDate());
         }
     }
 

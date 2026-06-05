@@ -285,6 +285,7 @@ public class PaymentEventListeners {
                 .transferredDepositAmount(transferred)
                 .reason(reason)
                 .replacedAt(Instant.now())
+                .newHandoverDate(newContract.getHandoverDate())
                 .build();
         outboxPublisher.enqueue(
                 "contract.replaced",

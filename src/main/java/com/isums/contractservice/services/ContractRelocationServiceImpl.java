@@ -968,6 +968,7 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
                                 : "Landlord-fault relocation")
                         : "Tenant-initiated relocation")
                 .replacedAt(Instant.now())
+                .newHandoverDate(relocation.getNewHandoverDate())
                 .build();
         outboxPublisher.enqueue(
                 "contract.replaced",

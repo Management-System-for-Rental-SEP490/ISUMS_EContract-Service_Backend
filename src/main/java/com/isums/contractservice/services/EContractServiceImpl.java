@@ -1921,6 +1921,9 @@ public class EContractServiceImpl implements EContractService {
                                 : "Landlord-fault relocation")
                         : "Tenant-initiated relocation")
                 .replacedAt(Instant.now())
+                .newHandoverDate(relocation.getNewHandoverDate() != null
+                        ? relocation.getNewHandoverDate()
+                        : replacement.getHandoverDate())
                 .build();
         outboxPublisher.enqueue(
                 "contract.replaced",

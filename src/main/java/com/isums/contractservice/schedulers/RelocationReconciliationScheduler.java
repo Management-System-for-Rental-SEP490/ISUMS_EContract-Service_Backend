@@ -50,12 +50,18 @@ public class RelocationReconciliationScheduler {
                 UUID newHouseId = reloc.getApprovedHouseId() != null
                         ? reloc.getApprovedHouseId()
                         : reloc.getRequestedHouseId();
+                EContract replacement = reloc.getNewContractId() != null
+                        ? contractRepo.findById(reloc.getNewContractId()).orElse(null)
+                        : null;
+                Instant newHandoverDate = reloc.getNewHandoverDate() != null
+                        ? reloc.getNewHandoverDate()
+                        : (replacement != null ? replacement.getHandoverDate() : null);
 
                 String messageId = UUID.randomUUID().toString();
                 ContractReplacedEvent event = ContractReplacedEvent.builder()
                         .messageId(messageId)
                         .oldContractId(old.getId())
-                        .newContractId(null)
+                        .newContractId(replacement != null ? replacement.getId() : reloc.getNewContractId())
                         .oldHouseId(old.getHouseId())
                         .newHouseId(newHouseId)
                         .tenantId(old.getUserId())
@@ -66,6 +72,7 @@ public class RelocationReconciliationScheduler {
                                 ? reloc.getTransferredDepositAmount() : 0L)
                         .reason("reconciliation-replay")
                         .replacedAt(Instant.now())
+                        .newHandoverDate(newHandoverDate)
                         .build();
 
                 outboxPublisher.enqueue(
