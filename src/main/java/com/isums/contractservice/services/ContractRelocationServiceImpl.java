@@ -23,6 +23,7 @@ import com.isums.contractservice.domains.enums.RelocationStateMachine;
 import com.isums.contractservice.domains.enums.RenewalRequestStatus;
 import com.isums.contractservice.domains.events.CancelDepositInvoiceRequestedEvent;
 import com.isums.contractservice.domains.events.ContractReplacedEvent;
+import com.isums.contractservice.domains.events.RelocationReviewedEvent;
 import com.isums.contractservice.domains.events.DepositRefundConfirmedEvent;
 import com.isums.contractservice.domains.events.RelocationReportedEvent;
 import com.isums.contractservice.exceptions.NotFoundException;
@@ -427,7 +428,9 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
         if (!Boolean.TRUE.equals(request.approved())) {
             transition(relocation, RelocationRequestStatus.REJECTED);
-            return toDto(relocationRepo.save(relocation));
+            ContractRelocationRequest saved = relocationRepo.save(relocation);
+            publishRelocationReviewed(saved, false);
+            return toDto(saved);
         }
 
         EContract old = contractRepo.findById(relocation.getOldContractId())
@@ -454,7 +457,9 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
             approveRefundTermination(relocation, old, request);
             log.info("[Relocation] REFUND_TERMINATE_APPROVED id={} oldContractId={} amount={}",
                     relocation.getId(), old.getId(), relocation.getRefundAmount());
-            return toDto(relocationRepo.save(relocation));
+            ContractRelocationRequest saved = relocationRepo.save(relocation);
+            publishRelocationReviewed(saved, true);
+            return toDto(saved);
         }
 
         approveReplacement(relocation, old, request);
@@ -462,7 +467,30 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
         log.info("[Relocation] APPROVED id={} approvedHouseId={} handling={} transfer={} additional={}",
                 relocation.getId(), relocation.getApprovedHouseId(), relocation.getDepositHandling(),
                 relocation.getTransferredDepositAmount(), relocation.getAdditionalDepositAmount());
-        return toDto(relocationRepo.save(relocation));
+        ContractRelocationRequest saved = relocationRepo.save(relocation);
+        publishRelocationReviewed(saved, true);
+        return toDto(saved);
+    }
+
+    private void publishRelocationReviewed(
+            ContractRelocationRequest relocation,
+            boolean approved) {
+        if (relocation.getRequestKind() != RelocationRequestKind.LANDLORD_FAULT_UNINHABITABLE) {
+            return;
+        }
+        RelocationReviewedEvent event = RelocationReviewedEvent.builder()
+                .relocationRequestId(relocation.getId())
+                .oldContractId(relocation.getOldContractId())
+                .oldHouseId(relocation.getOldHouseId())
+                .approved(approved)
+                .reviewedBy(relocation.getReviewedBy())
+                .reviewedAt(relocation.getReviewedAt())
+                .build();
+        outboxPublisher.enqueue(
+                "relocation.reviewed",
+                relocation.getOldContractId().toString(),
+                event,
+                UUID.randomUUID().toString());
     }
 
     private void approveReplacement(

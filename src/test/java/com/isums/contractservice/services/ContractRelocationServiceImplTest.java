@@ -15,6 +15,7 @@ import com.isums.contractservice.domains.enums.RelocationRequestKind;
 import com.isums.contractservice.domains.enums.RelocationRequestStatus;
 import com.isums.contractservice.domains.enums.RelocationResolutionType;
 import com.isums.contractservice.domains.events.ContractReplacedEvent;
+import com.isums.contractservice.domains.events.RelocationReviewedEvent;
 import com.isums.contractservice.exceptions.NotFoundException;
 import com.isums.contractservice.domains.dtos.DepositBookableHouseDto;
 import com.isums.contractservice.domains.enums.RenewalRequestStatus;
@@ -410,6 +411,29 @@ class ContractRelocationServiceImplTest {
         }
 
         @Test
+        @DisplayName("rejecting landlord-fault relocation publishes inspection review event")
+        void rejectLandlordFaultPublishesReviewEvent() {
+            ContractRelocationRequest r = reloRow(RelocationRequestStatus.REQUESTED,
+                    RelocationRequestKind.LANDLORD_FAULT_UNINHABITABLE,
+                    RelocationFaultParty.LANDLORD, internalUserId, null);
+            when(relocationRepo.findById(r.getId())).thenReturn(Optional.of(r));
+            stubResolveInternal(kcId, internalUserId);
+            when(relocationRepo.save(any(ContractRelocationRequest.class))).thenAnswer(i -> i.getArgument(0));
+
+            service.review(r.getId(), kcId, true, reviewBuilder(false).build());
+
+            ArgumentCaptor<RelocationReviewedEvent> eventCaptor =
+                    ArgumentCaptor.forClass(RelocationReviewedEvent.class);
+            verify(outboxPublisher).enqueue(
+                    eq("relocation.reviewed"),
+                    eq(contractId.toString()),
+                    eventCaptor.capture(),
+                    anyString());
+            assertThat(eventCaptor.getValue().isApproved()).isFalse();
+            assertThat(eventCaptor.getValue().getOldContractId()).isEqualTo(contractId);
+        }
+
+        @Test
         @DisplayName("rejects when status != REQUESTED")
         void wrongStatus() {
             ContractRelocationRequest r = reloRow(RelocationRequestStatus.APPROVED,
@@ -454,7 +478,7 @@ class ContractRelocationServiceImplTest {
         @DisplayName("repairs stale UNPAID snapshot when payment-service says old deposit is paid")
         void staleUnpaidSnapshotWithPaidInvoiceTransfersDeposit() {
             ContractRelocationRequest r = reloRow(RelocationRequestStatus.REQUESTED,
-                    RelocationRequestKind.PRE_HANDOVER_TENANT_REQUEST,
+                    RelocationRequestKind.LANDLORD_FAULT_UNINHABITABLE,
                     RelocationFaultParty.LANDLORD, internalUserId, null);
             r.setDepositStatusSnapshot(DepositStatus.UNPAID);
             r.setDepositAmount(22_000_000L);
@@ -482,6 +506,14 @@ class ContractRelocationServiceImplTest {
             assertThat(r.getDepositHandling()).isEqualTo(DepositHandling.TRANSFER_TO_REPLACEMENT);
             assertThat(r.getTransferredDepositAmount()).isEqualTo(22_000_000L);
             assertThat(r.getAdditionalDepositAmount()).isZero();
+            ArgumentCaptor<RelocationReviewedEvent> eventCaptor =
+                    ArgumentCaptor.forClass(RelocationReviewedEvent.class);
+            verify(outboxPublisher).enqueue(
+                    eq("relocation.reviewed"),
+                    eq(contractId.toString()),
+                    eventCaptor.capture(),
+                    anyString());
+            assertThat(eventCaptor.getValue().isApproved()).isTrue();
         }
 
         @Test
