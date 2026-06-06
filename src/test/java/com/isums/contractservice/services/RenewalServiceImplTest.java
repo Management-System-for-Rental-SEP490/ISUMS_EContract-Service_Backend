@@ -266,6 +266,7 @@ class RenewalServiceImplTest {
         @DisplayName("returns canRequest=true when no active request and contract COMPLETED")
         void canRequest() {
             EContract c = contract(EContractStatus.COMPLETED);
+            c.setEndAt(Instant.now().plus(60, ChronoUnit.DAYS));
             when(contractRepo.findById(contractId)).thenReturn(Optional.of(c));
             when(renewalRequestRepo.findByContractIdAndStatusNotIn(eq(contractId), anyList()))
                     .thenReturn(Optional.empty());

@@ -1,10 +1,12 @@
 package com.isums.contractservice.infrastructures.Listeners;
 
 import com.isums.contractservice.domains.entities.EContract;
+import com.isums.contractservice.domains.enums.ContractDemoStatus;
 import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.events.InspectionDoneNotifyEvent;
 import com.isums.contractservice.domains.events.JobCompletedEvent;
 import com.isums.contractservice.infrastructures.repositories.EContractRepository;
+import com.isums.contractservice.infrastructures.repositories.ContractDemoSessionRepository;
 import common.kafkas.IdempotencyService;
 import common.kafkas.KafkaListenerHelper;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +19,7 @@ import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.UUID;
+import java.time.Instant;
 
 @Component
 @RequiredArgsConstructor
@@ -24,12 +27,13 @@ import java.util.UUID;
 public class MaintenanceEventListeners {
 
     private final EContractRepository contractRepo;
+    private final ContractDemoSessionRepository demoSessionRepo;
     private final KafkaTemplate<String, Object> kafka;
     private final ObjectMapper objectMapper;
     private final IdempotencyService idempotencyService;
     private final KafkaListenerHelper kafkaHelper;
 
-    @KafkaListener(topics = "job.inspection.done", groupId = "contract-group")
+    @KafkaListener(topics = "job.completed", groupId = "contract-group")
     public void handleInspectionDone(ConsumerRecord<String, String> record, Acknowledgment ack) {
 
         String messageId = kafkaHelper.extractMessageId(record);
@@ -60,6 +64,11 @@ public class MaintenanceEventListeners {
             contract.setStatus(EContractStatus.INSPECTION_DONE);
             contractRepo.save(contract);
 
+            var demoSession = demoSessionRepo
+                    .findFirstByContractIdAndStatusOrderByStartedAtDesc(
+                            contract.getId(), ContractDemoStatus.ACTIVE)
+                    .orElse(null);
+
             kafka.send("contract.inspection.done",
                     event.getContractId().toString(),
                     InspectionDoneNotifyEvent.builder()
@@ -69,8 +78,15 @@ public class MaintenanceEventListeners {
                             .houseId(contract.getHouseId())
                             .tenantId(contract.getUserId())
                             .deductionAmount(0L)
+                            .effectiveAt(demoSession != null ? demoSession.getEffectiveAt() : null)
                             .messageId(UUID.randomUUID().toString())
                             .build());
+
+            if (demoSession != null) {
+                demoSession.setStatus(ContractDemoStatus.COMPLETED);
+                demoSession.setCompletedAt(Instant.now());
+                demoSessionRepo.save(demoSession);
+            }
 
             idempotencyService.markProcessed(messageId);
             ack.acknowledge();

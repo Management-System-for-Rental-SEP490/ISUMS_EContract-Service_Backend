@@ -5,6 +5,7 @@ import com.isums.contractservice.domains.enums.EContractStatus;
 import com.isums.contractservice.domains.events.InspectionDoneNotifyEvent;
 import com.isums.contractservice.domains.events.JobCompletedEvent;
 import com.isums.contractservice.infrastructures.repositories.EContractRepository;
+import com.isums.contractservice.infrastructures.repositories.ContractDemoSessionRepository;
 import common.kafkas.IdempotencyService;
 import common.kafkas.KafkaListenerHelper;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -37,6 +38,7 @@ import static org.mockito.Mockito.when;
 class MaintenanceEventListenersTest {
 
     @Mock private EContractRepository contractRepo;
+    @Mock private ContractDemoSessionRepository demoSessionRepo;
     @Mock private KafkaTemplate<String, Object> kafka;
     @Mock private ObjectMapper objectMapper;
     @Mock private IdempotencyService idempotencyService;

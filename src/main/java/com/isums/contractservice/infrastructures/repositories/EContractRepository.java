@@ -32,6 +32,21 @@ public interface EContractRepository extends JpaRepository<EContract, UUID>, Jpa
 
     Optional<EContract> findByHouseIdAndUserId(UUID houseId, UUID userId);
 
+    @Query("""
+            SELECT e FROM EContract e
+            WHERE e.houseId = :houseId
+              AND e.userId <> :excludedUserId
+              AND e.status IN :statuses
+              AND e.startAt >= :from
+            ORDER BY e.startAt ASC, e.createdAt ASC
+            """)
+    List<EContract> findNextContracts(
+            @Param("houseId") UUID houseId,
+            @Param("excludedUserId") UUID excludedUserId,
+            @Param("statuses") List<EContractStatus> statuses,
+            @Param("from") Instant from,
+            Pageable pageable);
+
     List<EContract> findByUserIdOrderByCreatedAtDesc(UUID userId);
 
     List<EContract> findByStatusAndEndAtBefore(EContractStatus status, Instant endAt);

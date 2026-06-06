@@ -65,7 +65,15 @@ public class RenewalNotificationScheduler {
         }
     }
 
+    public void simulateContractMilestone(EContract contract, LocalDate effectiveDate, UUID sessionId) {
+        processContract(contract, effectiveDate, "DEMO_" + sessionId + "_");
+    }
+
     private void processContract(EContract contract, LocalDate today) {
+        processContract(contract, today, "");
+    }
+
+    private void processContract(EContract contract, LocalDate today, String milestonePrefix) {
         LocalDate endDate = contract.getEndAt()
                 .atZone(VN).toLocalDate();
 
@@ -78,7 +86,7 @@ public class RenewalNotificationScheduler {
         );
         if (alreadyRequested) return;
 
-        String milestoneKey = contract.getId() + "_D_" + daysUntilEnd;
+        String milestoneKey = milestonePrefix + contract.getId() + "_D_" + daysUntilEnd;
         if (logRepo.existsByMilestoneKey(milestoneKey)) return;
 
         kafka.send("contract.renewal.reminder",
