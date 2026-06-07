@@ -32,6 +32,10 @@ public class HouseGrpcClient {
         return houseStub.getHousesByManagerRegion(req);
     }
 
+    public ListHouseResponse getDepositBookableHouses() {
+        return houseStub.getDepositBookableHouses(GetAllHousesRequest.newBuilder().build());
+    }
+
     public TenantResponse getTenantByUserId(UUID userId) {
         GetTenantByUserIdRequest req = GetTenantByUserIdRequest.newBuilder().setUserId(userId.toString()).build();
         return tenantStub.getTenantByUserId(req);

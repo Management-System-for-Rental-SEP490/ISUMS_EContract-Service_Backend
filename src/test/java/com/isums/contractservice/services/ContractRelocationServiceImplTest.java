@@ -1140,13 +1140,20 @@ class ContractRelocationServiceImplTest {
     @DisplayName("findDepositBookableHouses (marketplace)")
     class DepositBookable {
 
+        private com.isums.houseservice.grpc.ListHouseResponse bookable(HouseResponse... houses) {
+            com.isums.houseservice.grpc.ListHouseResponse.Builder b =
+                    com.isums.houseservice.grpc.ListHouseResponse.newBuilder();
+            for (HouseResponse h : houses) {
+                b.addHouse(h);
+            }
+            return b.build();
+        }
+
         @Test
-        @DisplayName("returns empty list when no contracts are expiring")
+        @DisplayName("returns empty list when no houses are open for deposit")
         void empty() {
             stubResolveInternal(kcId, internalUserId);
-            when(contractRepo.findByStatusAndEndAtBetween(
-                    eq(EContractStatus.COMPLETED), any(Instant.class), any(Instant.class)))
-                    .thenReturn(List.of());
+            when(houseGrpc.getDepositBookableHouses()).thenReturn(bookable());
 
             List<DepositBookableHouseDto> dtos = service.findDepositBookableHouses(kcId);
 
@@ -1154,21 +1161,15 @@ class ContractRelocationServiceImplTest {
         }
 
         @Test
-        @DisplayName("returns expiring contract's house with availableFrom = endAt + buffer")
+        @DisplayName("returns open-for-deposit house with availableFrom = endAt + buffer")
         void happy() {
             stubResolveInternal(kcId, internalUserId);
             UUID otherTenant = UUID.randomUUID();
             EContract expiring = signedContract(otherTenant, houseIdOld, EContractStatus.COMPLETED, 10_000_000L);
-            // override endAt to simulate "expires in 10 days"
             Instant endAt = Instant.now().plus(10, ChronoUnit.DAYS);
             expiring.setEndAt(endAt);
             expiring.setDepositRefundDays(7);
-            when(contractRepo.findByStatusAndEndAtBetween(
-                    eq(EContractStatus.COMPLETED), any(Instant.class), any(Instant.class)))
-                    .thenReturn(List.of(expiring));
-            when(renewalRequestRepo.existsByContractIdAndStatusNotIn(
-                    eq(expiring.getId()), anyList())).thenReturn(false);
-            when(houseGrpc.getHouseById(houseIdOld)).thenReturn(
+            when(houseGrpc.getDepositBookableHouses()).thenReturn(bookable(
                     HouseResponse.newBuilder()
                             .setId(houseIdOld.toString())
                             .setName("Phong A2")
@@ -1176,7 +1177,11 @@ class ContractRelocationServiceImplTest {
                             .setCity("HCMC")
                             .setCommune("Q3")
                             .setWard("P5")
-                            .build());
+                            .build()));
+            when(contractRepo.findFirstByHouseIdAndStatusOrderByEndAtDesc(houseIdOld, EContractStatus.COMPLETED))
+                    .thenReturn(java.util.Optional.of(expiring));
+            when(renewalRequestRepo.existsByContractIdAndStatusNotIn(
+                    eq(expiring.getId()), anyList())).thenReturn(false);
 
             List<DepositBookableHouseDto> dtos = service.findDepositBookableHouses(kcId);
 
@@ -1194,9 +1199,10 @@ class ContractRelocationServiceImplTest {
             stubResolveInternal(kcId, internalUserId);
             EContract expiring = signedContract(UUID.randomUUID(), houseIdOld, EContractStatus.COMPLETED, 10_000_000L);
             expiring.setEndAt(Instant.now().plus(10, ChronoUnit.DAYS));
-            when(contractRepo.findByStatusAndEndAtBetween(
-                    eq(EContractStatus.COMPLETED), any(), any()))
-                    .thenReturn(List.of(expiring));
+            when(houseGrpc.getDepositBookableHouses()).thenReturn(bookable(
+                    HouseResponse.newBuilder().setId(houseIdOld.toString()).build()));
+            when(contractRepo.findFirstByHouseIdAndStatusOrderByEndAtDesc(houseIdOld, EContractStatus.COMPLETED))
+                    .thenReturn(java.util.Optional.of(expiring));
             when(renewalRequestRepo.existsByContractIdAndStatusNotIn(
                     eq(expiring.getId()), anyList())).thenReturn(true);
 
@@ -1210,9 +1216,10 @@ class ContractRelocationServiceImplTest {
             stubResolveInternal(kcId, internalUserId);
             EContract expiring = signedContract(UUID.randomUUID(), houseIdOld, EContractStatus.COMPLETED, 10_000_000L);
             expiring.setEndAt(Instant.now().plus(10, ChronoUnit.DAYS));
-            when(contractRepo.findByStatusAndEndAtBetween(
-                    eq(EContractStatus.COMPLETED), any(), any()))
-                    .thenReturn(List.of(expiring));
+            when(houseGrpc.getDepositBookableHouses()).thenReturn(bookable(
+                    HouseResponse.newBuilder().setId(houseIdOld.toString()).build()));
+            when(contractRepo.findFirstByHouseIdAndStatusOrderByEndAtDesc(houseIdOld, EContractStatus.COMPLETED))
+                    .thenReturn(java.util.Optional.of(expiring));
             when(renewalRequestRepo.existsByContractIdAndStatusNotIn(any(), anyList()))
                     .thenReturn(false);
             when(relocationRepo.existsByOldContractIdAndStatusIn(
@@ -1228,14 +1235,14 @@ class ContractRelocationServiceImplTest {
             stubResolveInternal(kcId, internalUserId);
             EContract myContract = signedContract(internalUserId, houseIdOld, EContractStatus.COMPLETED, 10_000_000L);
             myContract.setEndAt(Instant.now().plus(10, ChronoUnit.DAYS));
-            when(contractRepo.findByStatusAndEndAtBetween(
-                    eq(EContractStatus.COMPLETED), any(), any()))
-                    .thenReturn(List.of(myContract));
+            when(houseGrpc.getDepositBookableHouses()).thenReturn(bookable(
+                    HouseResponse.newBuilder().setId(houseIdOld.toString()).build()));
+            when(contractRepo.findFirstByHouseIdAndStatusOrderByEndAtDesc(houseIdOld, EContractStatus.COMPLETED))
+                    .thenReturn(java.util.Optional.of(myContract));
 
             List<DepositBookableHouseDto> dtos = service.findDepositBookableHouses(kcId);
 
             assertThat(dtos).isEmpty();
-            // We should NOT have queried renewal/relocation repos because we filter on userId first
             verify(renewalRequestRepo, never()).existsByContractIdAndStatusNotIn(any(), anyList());
         }
 
@@ -1246,13 +1253,12 @@ class ContractRelocationServiceImplTest {
             EContract expiring = signedContract(UUID.randomUUID(), houseIdOld, EContractStatus.COMPLETED, 10_000_000L);
             Instant endAt = Instant.now().plus(15, ChronoUnit.DAYS);
             expiring.setEndAt(endAt);
-            expiring.setDepositRefundDays(null); // no value set
-            when(contractRepo.findByStatusAndEndAtBetween(
-                    eq(EContractStatus.COMPLETED), any(), any()))
-                    .thenReturn(List.of(expiring));
+            expiring.setDepositRefundDays(null);
+            when(houseGrpc.getDepositBookableHouses()).thenReturn(bookable(
+                    HouseResponse.newBuilder().setId(houseIdOld.toString()).setName("X").setAddress("Y").build()));
+            when(contractRepo.findFirstByHouseIdAndStatusOrderByEndAtDesc(houseIdOld, EContractStatus.COMPLETED))
+                    .thenReturn(java.util.Optional.of(expiring));
             when(renewalRequestRepo.existsByContractIdAndStatusNotIn(any(), anyList())).thenReturn(false);
-            when(houseGrpc.getHouseById(houseIdOld)).thenReturn(
-                    HouseResponse.newBuilder().setId(houseIdOld.toString()).setName("X").setAddress("Y").build());
 
             List<DepositBookableHouseDto> dtos = service.findDepositBookableHouses(kcId);
 

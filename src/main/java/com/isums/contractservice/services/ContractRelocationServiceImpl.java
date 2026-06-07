@@ -1319,8 +1319,6 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
     @Cacheable(value = "marketplace-bookable", key = "#actorId")
     public java.util.List<DepositBookableHouseDto> findDepositBookableHouses(UUID actorId) {
         UUID callerInternalId = resolveInternalTenantId(actorId);
-        Instant now = Instant.now();
-        Instant cutoff = now.plus(30, ChronoUnit.DAYS);
 
         java.util.List<RenewalRequestStatus> renewalClosedStatuses = java.util.List.of(
                 RenewalRequestStatus.DECLINED_BY_MANAGER,
@@ -1329,15 +1327,26 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
 
         java.util.Set<UUID> lockedHouseIds = contractRepo.findHouseIdsByStatusIn(PRE_COMPLETION_STATUSES);
 
-        java.util.List<EContract> expiring = contractRepo.findByStatusAndEndAtBetween(
-                EContractStatus.COMPLETED, now, cutoff);
+        java.util.List<HouseResponse> bookableHouses = houseGrpc.getDepositBookableHouses().getHouseList();
 
         java.util.List<DepositBookableHouseDto> result = new java.util.ArrayList<>();
-        for (EContract c : expiring) {
-            if (callerInternalId.equals(c.getUserId())) {
+        for (HouseResponse house : bookableHouses) {
+            UUID houseId;
+            try {
+                houseId = UUID.fromString(house.getId());
+            } catch (Exception e) {
                 continue;
             }
-            if (lockedHouseIds.contains(c.getHouseId())) {
+            if (lockedHouseIds.contains(houseId)) {
+                continue;
+            }
+            java.util.Optional<EContract> activeOpt =
+                    contractRepo.findFirstByHouseIdAndStatusOrderByEndAtDesc(houseId, EContractStatus.COMPLETED);
+            if (activeOpt.isEmpty()) {
+                continue;
+            }
+            EContract c = activeOpt.get();
+            if (callerInternalId.equals(c.getUserId())) {
                 continue;
             }
             if (renewalRequestRepo.existsByContractIdAndStatusNotIn(c.getId(), renewalClosedStatuses)) {
@@ -1346,30 +1355,11 @@ public class ContractRelocationServiceImpl implements ContractRelocationService 
             if (relocationRepo.existsByOldContractIdAndStatusIn(c.getId(), OPEN_STATUSES)) {
                 continue;
             }
-            HouseResponse house;
-            try {
-                house = houseGrpc.getHouseById(c.getHouseId());
-            } catch (Exception e) {
-                log.warn("[Marketplace] failed to fetch house {} for deposit-bookable contract {}: {}",
-                        c.getHouseId(), c.getId(), e.getMessage());
-                continue;
-            }
-            if (house == null) {
-                continue;
-            }
-            String houseStatus = house.getStatus() != null ? house.getStatus().name() : null;
-            if (houseStatus != null
-                    && !"RENTED".equals(houseStatus)
-                    && !"HOUSE_STATUS_RENTED".equals(houseStatus)
-                    && !"HOUSE_STATUS_UNSPECIFIED".equals(houseStatus)) {
-                continue;
-            }
-
             Instant availableFrom = c.getEndAt().plus(
                     nzDays(c.getDepositRefundDays(), 7), ChronoUnit.DAYS);
 
             result.add(new DepositBookableHouseDto(
-                    UUID.fromString(house.getId()),
+                    houseId,
                     house.getName(),
                     house.getAddress(),
                     house.getCity(),
