@@ -816,6 +816,13 @@ public class EContractController {
         return com.isums.contractservice.domains.dtos.ApiResponses.ok(null, "Deposit refund confirmed successfully");
     }
 
+    @PostMapping("/batch")
+    @PreAuthorize("hasAnyRole('LANDLORD', 'MANAGER')")
+    public com.isums.contractservice.domains.dtos.ApiResponse<List<ContractBriefDto>> getContractsBrief(
+            @RequestBody List<UUID> ids) {
+        return com.isums.contractservice.domains.dtos.ApiResponses.ok(service.getBriefByIds(ids), "Success");
+    }
+
     @PostMapping("/{contractId}/clone-for-renewal")
     @PreAuthorize("hasAnyRole('LANDLORD', 'MANAGER')")
     public com.isums.contractservice.domains.dtos.ApiResponse<EContractDto> cloneForRenewal(

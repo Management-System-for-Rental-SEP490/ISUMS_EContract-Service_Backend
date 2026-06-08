@@ -1014,6 +1014,21 @@ public class EContractServiceImpl implements EContractService {
                 contractId, req.refundAmount());
     }
 
+    @Override
+    public List<ContractBriefDto> getBriefByIds(List<UUID> ids) {
+        if (ids == null || ids.isEmpty()) {
+            return java.util.List.of();
+        }
+        return contractRepo.findAllById(ids).stream()
+                .map(c -> new ContractBriefDto(
+                        c.getId(),
+                        c.getDocumentNo(),
+                        c.getName(),
+                        c.getTenantName(),
+                        c.getTenantEmail()))
+                .toList();
+    }
+
     @Transactional
     public EContractDto cloneForRenewal(UUID oldContractId, CloneForRenewalRequest req, UUID actorId, String jwtToken) {
         EContract old = findById(oldContractId);

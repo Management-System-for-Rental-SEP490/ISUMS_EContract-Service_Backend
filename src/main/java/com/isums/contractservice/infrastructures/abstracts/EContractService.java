@@ -63,5 +63,7 @@ public interface EContractService {
 
     void confirmRefund(UUID contractId, ConfirmRefundRequest req);
 
+    List<ContractBriefDto> getBriefByIds(List<UUID> ids);
+
     EContractDto cloneForRenewal(UUID oldContractId, CloneForRenewalRequest req, UUID actorId, String jwtToken);
 }
