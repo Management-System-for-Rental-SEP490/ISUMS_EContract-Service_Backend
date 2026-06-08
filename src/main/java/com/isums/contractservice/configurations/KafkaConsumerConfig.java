@@ -23,9 +23,10 @@ public class KafkaConsumerConfig {
 
         ExponentialBackOff backOff = new ExponentialBackOff(1000L, 2.0);
         backOff.setMaxInterval(60_000L);
-        backOff.setMaxAttempts(Long.MAX_VALUE);
+        backOff.setMaxAttempts(5L);
 
         DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
+        handler.setCommitRecovered(true);
 
         handler.addNotRetryableExceptions(
                 org.springframework.messaging.converter.MessageConversionException.class,
