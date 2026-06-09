@@ -305,7 +305,8 @@ public class EContractServiceImpl implements EContractService {
 
         String magicToken = contractTokenService.generateToken(contractId, c.getUserId());
         String pdfViewUrl = s3.presignedUrl(snapshotKey, 24 * 60);
-        String confirmUrl = contractViewBaseUrl + "/" + contractId + "/confirm?token=" + magicToken;
+        String confirmUrl = contractViewBaseUrl + "/" + contractId + "/confirm?token=" + magicToken
+                + "&lang=" + com.isums.contractservice.utils.ContractI18n.lang(c.getContractLanguage());
 
         ConfirmAndSendToTenantEvent event = ConfirmAndSendToTenantEvent.builder()
                 .messageId(UUID.randomUUID().toString())
